@@ -1,5 +1,6 @@
 # makerom settings for the Blocksmith 2 .cia (written for this project).
-# Title id 0x00040000000B10C2 (old Blocksmith is ...B10CC, so both can be installed).
+# UniqueId 0xB10C2 gives title id 0x000400000B10C200 (makerom shifts it left
+# 8 bits). Old Blocksmith's UniqueId is 0xB10CC, so both can be installed.
 
 BasicInfo:
   Title                   : "Blocksmith 2"

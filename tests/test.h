@@ -22,5 +22,6 @@ extern int g_fails;
 
 /* One function per test file, called from test_main.c. */
 void test_world_coords(void);
+void test_framebuffer(void);
 
 #endif

@@ -6,6 +6,7 @@ int g_fails = 0;
 int main(void)
 {
     test_world_coords();
+    test_framebuffer();
 
     printf("PC tests: %d checks, %d failed\n", g_checks, g_fails);
     if (g_checks == 0) {
