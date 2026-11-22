@@ -20,8 +20,21 @@ extern int g_fails;
         }                                                                           \
     } while (0)
 
+/* Float check. Written so that a NaN fails instead of slipping through. */
+#define CHECK_NEAR(actual, expected, tol)                                           \
+    do {                                                                            \
+        double a_ = (actual), e_ = (expected);                                      \
+        g_checks++;                                                                 \
+        if (!(a_ - e_ <= (tol) && e_ - a_ <= (tol))) {                              \
+            g_fails++;                                                              \
+            printf("FAIL %s:%d: %s is %g, expected %g\n", __FILE__, __LINE__,       \
+                   #actual, a_, e_);                                                \
+        }                                                                           \
+    } while (0)
+
 /* One function per test file, called from test_main.c. */
 void test_world_coords(void);
 void test_framebuffer(void);
+void test_mat4(void);
 
 #endif
