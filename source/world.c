@@ -32,6 +32,16 @@ int world_get(const World *w, int x, int y, int z)
     return c ? chunk_get(c, block_to_local(x), y, block_to_local(z)) : BLOCK_AIR;
 }
 
+void world_set(World *w, int x, int y, int z, int block)
+{
+    int i = block_to_chunk(x) - WORLD_CHUNK_MIN;
+    int j = block_to_chunk(z) - WORLD_CHUNK_MIN;
+
+    if (i < 0 || i >= WORLD_CHUNKS || j < 0 || j >= WORLD_CHUNKS)
+        return;
+    chunk_set(&w->chunks[j][i], block_to_local(x), y, block_to_local(z), block);
+}
+
 void world_neighbours(const World *w, int cx, int cz, const Chunk *nb[NB_COUNT])
 {
     nb[NB_POS_X] = world_chunk(w, cx + 1, cz);

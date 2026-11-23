@@ -9,14 +9,17 @@
 #include "look.h"
 #include "mat4.h"
 #include "mesh.h"
+#include "player.h"
+#include "walk.h"
 #include "world.h"
 
-/* Roadmap row 1-06: a small world. 4 x 4 chunks (64 x 64 blocks) of gentle
- * hills from a fixed seed: grass, three layers of dirt, stone below. Each
- * chunk has its own mesh, built with its neighbours so the faces between
- * chunks are skipped. The camera hangs over the south edge looking north
- * across the hills; A B X Y and the C-stick turn it. The bottom screen stays
- * a solid colour. START quits. */
+/* Roadmap row 1-07: walking. The player stands in the middle of the small
+ * world (4 x 4 chunks of gentle hills from a fixed seed, one mesh per chunk)
+ * facing north. The Circle Pad walks, by where the camera faces; gravity
+ * holds the player on the ground, blocks stop them, and walking into a
+ * one-block step hops up it (no jump button). The world's sides are an
+ * invisible wall. A B X Y and the C-stick look around. The bottom screen
+ * stays a solid colour. START quits. */
 
 #define PI 3.14159265f
 #define WORLD_SEED 2026u /* typed and random seeds come later (kickoff W-10) */
@@ -72,6 +75,15 @@ static bool build_meshes(void)
     return true;
 }
 
+/* Walking speed from the Circle Pad, by where the camera faces. */
+static void read_walk(const Camera *cam, float *vx, float *vz)
+{
+    circlePosition pad = { 0, 0 };
+
+    hidCircleRead(&pad);
+    walk_velocity(pad.dx, pad.dy, cam->yaw, vx, vz);
+}
+
 static void read_look(LookInput *in)
 {
     u32 held = hidKeysHeld();
@@ -88,15 +100,15 @@ static void read_look(LookInput *in)
 
 int main(void)
 {
-    /* 26 blocks south of the world's south edge (z = 32), about 30 above the
-     * ground, in line with its middle, facing north, looking down 35 degrees:
-     * the whole world in view. */
-    Camera cam = { 0.0f, 96.0f, 58.0f, 0.0f, -35.0f * PI / 180.0f };
+    /* Facing north, looking a little down; the eye follows the player. */
+    Camera cam = { 0.0f, 0.0f, 0.0f, 0.0f, -10.0f * PI / 180.0f };
+    Player player;
     Mat4 proj;
     u64 last;
 
     gfxInitDefault();
     world_generate(&s_world, WORLD_SEED);
+    player_spawn(&player, &s_world, 0, 0);
     if (!gpu_init() || !build_meshes()) {
         free_meshes();
         gpu_exit();
@@ -109,7 +121,7 @@ int main(void)
     while (aptMainLoop()) {
         LookInput in;
         Mat4 view, mvp;
-        float yaw_rate, pitch_rate, dt;
+        float yaw_rate, pitch_rate, vx, vz, dt;
         u64 now;
         int i, j;
 
@@ -117,8 +129,9 @@ int main(void)
         if (hidKeysDown() & KEY_START)
             break;
 
-        /* Turn by time passed, so the speed is the same at any frame rate.
-         * A long pause (the Home Menu) counts as at most a tenth of a second. */
+        /* Turn and walk by time passed, so the speed is the same at any
+         * frame rate. A long pause (the Home Menu) counts as at most a tenth
+         * of a second. */
         now = osGetTime();
         dt = (float)(now - last) / 1000.0f;
         last = now;
@@ -127,6 +140,11 @@ int main(void)
         read_look(&in);
         look_rates(&in, &yaw_rate, &pitch_rate);
         camera_turn(&cam, yaw_rate * dt, pitch_rate * dt);
+        read_walk(&cam, &vx, &vz);
+        player_step(&player, &s_world, vx, vz, dt);
+        cam.x = player.x;
+        cam.y = player.y + PLAYER_EYE;
+        cam.z = player.z;
 
         fill_screen(GFX_BOTTOM, 80, 150, 60);  /* grass green */
         gfxFlushBuffers();

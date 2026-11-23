@@ -44,5 +44,7 @@ void test_camera(void);
 void test_chunk(void);
 void test_terrain(void);
 void test_world(void);
+void test_walk(void);
+void test_player(void);
 
 #endif

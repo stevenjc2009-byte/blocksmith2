@@ -16,6 +16,8 @@ int main(void)
     test_chunk();
     test_terrain();
     test_world();
+    test_walk();
+    test_player();
 
     printf("PC tests: %d checks, %d failed\n", g_checks, g_fails);
     if (g_checks == 0) {

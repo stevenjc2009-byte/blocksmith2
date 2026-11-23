@@ -29,6 +29,9 @@ const Chunk *world_chunk(const World *w, int cx, int cz);
 /* The block at world position (x, y, z); BLOCK_AIR outside the world. */
 int world_get(const World *w, int x, int y, int z);
 
+/* Set the block at world (x, y, z); spots outside the world are ignored. */
+void world_set(World *w, int x, int y, int z, int block);
+
 /* The four chunks next to chunk (cx, cz), in NB_* order (chunk_mesh.h),
  * NULL where there is none, ready for chunk_mesh_build(). */
 void world_neighbours(const World *w, int cx, int cz, const Chunk *nb[NB_COUNT]);

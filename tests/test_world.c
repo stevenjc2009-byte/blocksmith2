@@ -63,6 +63,28 @@ static void test_edges(void)
     CHECK_EQ_INT(world_chunk(&s_w, 0, WORLD_CHUNK_MIN + WORLD_CHUNKS) == NULL, 1);
 }
 
+/* world_set changes only the one block it names, in the right chunk, and
+ * ignores spots outside the world. Run last: it changes the world. */
+static void test_set(void)
+{
+    int before = world_get(&s_w, 6, 50, 6);
+
+    world_set(&s_w, LO, 100, LO, BLOCK_STONE);
+    world_set(&s_w, HI - 1, 101, -17, BLOCK_DIRT);
+    CHECK_EQ_INT(world_get(&s_w, LO, 100, LO), BLOCK_STONE);
+    CHECK_EQ_INT(world_get(&s_w, HI - 1, 101, -17), BLOCK_DIRT);
+    CHECK_EQ_INT(chunk_get(&s_w.chunks[0][0], 0, 100, 0), BLOCK_STONE);
+    CHECK_EQ_INT(chunk_get(&s_w.chunks[0][3], CHUNK_SIZE - 1, 101, CHUNK_SIZE - 1), BLOCK_DIRT);
+    CHECK_EQ_INT(world_get(&s_w, LO + 1, 100, LO), BLOCK_AIR);
+    CHECK_EQ_INT(world_get(&s_w, HI - 1, 101, -16), BLOCK_AIR);
+    world_set(&s_w, LO, 100, LO, BLOCK_AIR);
+    CHECK_EQ_INT(world_get(&s_w, LO, 100, LO), BLOCK_AIR);
+    world_set(&s_w, HI, 50, 6, BLOCK_STONE);
+    world_set(&s_w, 6, 50, LO - 1, BLOCK_STONE);
+    CHECK_EQ_INT(world_get(&s_w, HI, 50, 6), BLOCK_AIR);
+    CHECK_EQ_INT(world_get(&s_w, 6, 50, 6), before);
+}
+
 static void test_neighbours(void)
 {
     const Chunk *nb[NB_COUNT];
@@ -180,5 +202,6 @@ void test_world(void)
         test_edges();
         test_neighbours();
         test_meshes(k_seeds[i]);
+        test_set();
     }
 }
