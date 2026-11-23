@@ -39,5 +39,7 @@ void test_mat4(void);
 void test_texswizzle(void);
 void test_blocktex(void);
 void test_mesh(void);
+void test_look(void);
+void test_camera(void);
 
 #endif
