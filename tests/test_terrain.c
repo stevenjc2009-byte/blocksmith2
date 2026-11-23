@@ -26,7 +26,7 @@ static int chunk_of(int x)
 }
 
 typedef struct {
-    int out_of_range, steep, bad_surface, cliffs, stone;
+    int out_of_range, steep, bad_surface, cliffs, tall_cliffs, stone;
     int land_pairs, level_pairs;
     int kinds[TERRAIN_KIND_COUNT];
 } AreaCheck;
@@ -80,6 +80,7 @@ static void check_pair(const TerrainColumn *a, const TerrainColumn *b, AreaCheck
         }
     } else if (a->kind == TERRAIN_MOUNTAIN && b->kind == TERRAIN_MOUNTAIN) {
         r->cliffs += d >= 3;
+        r->tall_cliffs += d >= 6;
     }
 }
 
@@ -152,10 +153,12 @@ static bool find_kind(uint32_t seed, TerrainKind kind, int min_height, int *fx, 
 
 /* Every seed has seas, beaches, rivers, plains, hills and mountains, and
  * the high mountains have cliffs (3 blocks or more straight up) of bare
- * stone. */
+ * stone. In at least half the seeds there are also many real cliffs, 6
+ * blocks or more straight up: too tall to jump, dug or built up (steve's
+ * answer for row 4-01). */
 static void test_kinds(void)
 {
-    int i, k;
+    int i, k, tall = 0;
 
     for (i = 0; i < SEED_COUNT; i++) {
         int x = 0, z = 0;
@@ -170,7 +173,9 @@ static void test_kinds(void)
         CHECK_EQ_INT(r.stone > 0, 1);
         CHECK_EQ_INT(r.steep, 0);
         CHECK_EQ_INT(r.bad_surface, 0);
+        tall += r.tall_cliffs >= 100;
     }
+    CHECK_EQ_INT(tall * 2 >= SEED_COUNT, 1);
 }
 
 /* The same seed always makes the same ground, all three ways of asking

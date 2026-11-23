@@ -51,7 +51,9 @@
  *   by sharp ridges (about 52 and 27 blocks apart) and bumps (22). Where
  *   `crag` is high, and away from their feet, they are cut into ledges
  *   TERRACE blocks tall: each one rises gently for most of its width, then
- *   steeply, which leaves cliffs (bare stone). Rivers stop at the
+ *   all at once, a wall of up to 8 blocks (bare stone cliffs, too tall to
+ *   jump: dug or built up, steve's answer for row 4-01; less above
+ *   SOFT_TOP, where heights are halved). Rivers stop at the
  *   mountains' feet. Nothing above keeps mountains walkable, and nothing
  *   else is changed where there are none. */
 #define COAST (-PCT(3))
@@ -75,7 +77,7 @@
 #define MOUNT_S PCT(5)      /* mountains start this far inland */
 #define MOUNT_BASE 10
 #define MOUNT_PEAK 50
-#define TERRACE BLK(7)
+#define TERRACE BLK(9)
 #define LEDGE (TERRACE * 3 / 4)      /* the gentle part of each ledge... */
 #define LEDGE_RISE (TERRACE / 5)     /* ...climbs this much, the cliff the rest */
 #define CLIFF_A0 PCT(30)             /* ledges start this far into the mountains */
@@ -184,8 +186,8 @@ static int mountain_raise(uint32_t seed, int x, int z, const int in[IN_COUNT], i
     if (w > 0) {
         int off = (int)((int64_t)in[IN_PHASE] * TERRACE / ONE);
         int t = raise + off, f = t % TERRACE;
-        int64_t g = f < LEDGE ? (int64_t)f * LEDGE_RISE / LEDGE
-                              : LEDGE_RISE + (int64_t)(f - LEDGE) * (TERRACE - LEDGE_RISE) / (TERRACE - LEDGE);
+        /* The gentle part, then straight up to the next ledge. */
+        int64_t g = f < LEDGE ? (int64_t)f * LEDGE_RISE / LEDGE : TERRACE;
         int terraced = t - f + (int)g - off;
 
         raise += (int)((int64_t)w * (terraced - raise) / ONE);
