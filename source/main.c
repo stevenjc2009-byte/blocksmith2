@@ -18,6 +18,7 @@
 #include "meshes.h"
 #include "player.h"
 #include "save.h"
+#include "savebg.h"
 #include "saveui.h"
 #include "settings.h"
 #include "sky.h"
@@ -117,30 +118,28 @@ static void draw_bottom(const Hotbar *hb, int fps_shown)
 /* Save the game: the world's changed chunks, then world.dat (seed, where
  * the player stands and looks, the hotbar, the time of day), then
  * settings.dat. True only if all of it was written; false too when the
- * world has no folder (the settings are still written). */
-static bool save_game(const Player *p, const Camera *cam, const Hotbar *hb)
+ * world has no folder (the settings are still written). With bg the files
+ * are written on a second thread (savebg.h): false then means the last
+ * save is still to be collected, and nothing was done. */
+static bool save_game(const Player *p, const Camera *cam, const Hotbar *hb, bool bg)
 {
     SaveInfo info;
-    bool ok = false;
+    SaveWorld *sw = s_saving ? &s_save : NULL;
     int k;
 
-    if (s_saving) {
-        ok = world_save_changed(&s_world) == 0;
-        info.seed = s_world.seed;
-        info.x = p->x;
-        info.y = p->y;
-        info.z = p->z;
-        info.yaw = cam->yaw;
-        info.pitch = cam->pitch;
-        for (k = 0; k < HOTBAR_SLOTS; k++)
-            info.hotbar[k] = (uint8_t)hb->block[k];
-        info.chosen = (uint8_t)hb->chosen;
-        info.daytime = s_daytime;
-        info.weather = s_weather;
-        ok = save_world_write(&s_save, &info) && ok;
-    }
+    info.seed = s_world.seed;
+    info.x = p->x;
+    info.y = p->y;
+    info.z = p->z;
+    info.yaw = cam->yaw;
+    info.pitch = cam->pitch;
+    for (k = 0; k < HOTBAR_SLOTS; k++)
+        info.hotbar[k] = (uint8_t)hb->block[k];
+    info.chosen = (uint8_t)hb->chosen;
+    info.daytime = s_daytime;
+    info.weather = s_weather;
     s_kept.view = s_settings.view;
-    return save_settings_write(SAVE_ROOT, &s_kept) && ok;
+    return bg ? savebg_start(&s_world, sw, &info, &s_kept) : savebg_now(&s_world, sw, &info, &s_kept);
 }
 
 /* Show how a save went, for SAVEUI_MSG_MS. */
@@ -162,7 +161,7 @@ static bool save_live(void *ctx)
 {
     const Live *l = ctx;
 
-    return save_game(l->p, l->cam, l->hb);
+    return save_game(l->p, l->cam, l->hb, false);
 }
 
 int main(void)
@@ -179,7 +178,7 @@ int main(void)
     uint32_t seed;
     u32 stale;
     StartChoice start;
-    bool cont = false, ok;
+    bool cont = false, ok, wanted = false; /* wanted: SAVE or the autosave, to start */
     int world = 0, pcx = 0, pcz = 0;
 
     gfxInitDefault();
@@ -225,7 +224,7 @@ int main(void)
     }
     world_init(&s_world, seed);
     if (s_saving)
-        world_set_store(&s_world, &s_save.store);
+        savebg_init(&s_world, &s_save);
     if (cont) {
         pcx = block_to_chunk((int)floorf(info.x));
         pcz = block_to_chunk((int)floorf(info.z));
@@ -252,7 +251,7 @@ int main(void)
     } else {
         weather_init(&s_weather, s_world.seed);
         player_spawn(&player, &s_world, 0, 0);
-        save_game(&player, &cam, &hotbar); /* so the new world can be carried on at once */
+        save_game(&player, &cam, &hotbar, false); /* so the new world can be carried on at once */
     }
     mat4_persp_tilt(&proj, 60.0f * PI / 180.0f, 400.0f / 240.0f, 0.1f, 160.0f);
 
@@ -326,7 +325,7 @@ int main(void)
 
                 hidTouchRead(&touch);
                 if (saveui_hit(touch.px, touch.py)) {
-                    show_saved(save_game(&player, &cam, &hotbar));
+                    wanted = true;
                     saved_at = osGetTime();
                 } else {
                     hotbar_tap(&hotbar, touch.px, touch.py);
@@ -337,9 +336,13 @@ int main(void)
                 break;
         }
         if (save_due(osGetTime(), saved_at)) {
-            show_saved(save_game(&player, &cam, &hotbar));
+            wanted = true;
             saved_at = osGetTime();
         }
+        if (savebg_poll(&s_world, &ok)) /* a save written on the second thread */
+            show_saved(ok);
+        if (wanted && save_game(&player, &cam, &hotbar, true))
+            wanted = false;
         if (lidsave_back(&s_lid, &ok)) { /* back from the lid closed or HOME */
             show_saved(ok);
             saved_at = osGetTime();
@@ -364,7 +367,7 @@ int main(void)
     }
 
     lidsave_hook_stop();
-    save_game(&player, &cam, &hotbar); /* START, or the system closing the game */
+    save_game(&player, &cam, &hotbar, false); /* START, or the system closing the game */
     save_world_close(&s_save);
     meshes_free();
     skydraw_exit();

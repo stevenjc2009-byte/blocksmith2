@@ -1,4 +1,5 @@
 #include <3ds.h>
+#include <string.h>
 
 #include "cloud.h"
 #include "gpu.h"
@@ -10,7 +11,10 @@
  * the GPU, so it is no longer reading them. Made on first use; if there is
  * no memory for them the sky's colour and the light still change. */
 static MeshVertex *s_quads;
-static MeshVertex *s_clouds; /* CLOUD_VERTS_MAX, the same way (row 3-04) */
+static MeshVertex *s_clouds; /* CLOUD_VERTS_MAX (row 3-04), the same way, but */
+static CloudCells s_cells;   /* written only when these cells or this grey */
+static float s_grey = -1.0f; /* change (fix batch, problem 9; -1: never) */
+static int s_cloud_n;
 static MeshVertex *s_drops;  /* WEATHER_VERTS_MAX, the same way (row 3-06) */
 
 void skydraw(float t, const Weather *weather, const World *world, const Camera *cam,
@@ -40,17 +44,30 @@ void skydraw(float t, const Weather *weather, const World *world, const Camera *
     if (!s_clouds)
         s_clouds = linearAlloc(CLOUD_VERTS_MAX * sizeof *s_clouds);
     if (s_clouds) {
-        n = cloud_build(cam->x, cam->z, t, s_clouds);
-        if (n > 0) { /* only the vertices written this frame */
-            grey = 1.0f - WEATHER_CLOUD_GREY * weather->strength;
+        /* Built in the pattern, before the drift; the matrix moves them
+         * on, and the fog is measured from the eye in the pattern too. */
+        float shift = cloud_shift(t), px = cam->x - shift;
+        CloudCells cells;
+        Mat4 move, moved;
+
+        cloud_cells(px, cam->z, &cells);
+        grey = 1.0f - WEATHER_CLOUD_GREY * weather->strength;
+        if (grey != s_grey || memcmp(&cells, &s_cells, sizeof cells) != 0) {
+            n = s_cloud_n = cloud_build(px, cam->z, 0.0f, s_clouds);
             for (i = 0; i < n; i++) {
                 s_clouds[i].r *= grey;
                 s_clouds[i].g *= grey;
                 s_clouds[i].b *= grey;
             }
             GSPGPU_FlushDataCache(s_clouds, n * sizeof *s_clouds);
-            gpu_set_fog(cam->x, cam->z, CLOUD_FOG_START, CLOUD_RADIUS);
-            gpu_draw(s_clouds, n, mvp);
+            s_cells = cells;
+            s_grey = grey;
+        }
+        if (s_cloud_n > 0) {
+            mat4_translate(&move, shift, 0.0f, 0.0f);
+            mat4_mul(&moved, mvp, &move);
+            gpu_set_fog(px, cam->z, CLOUD_FOG_START, CLOUD_RADIUS);
+            gpu_draw(s_clouds, s_cloud_n, &moved);
         }
     }
     sky_fog(view, &start, &end);
@@ -75,4 +92,5 @@ void skydraw_exit(void)
     if (s_drops)
         linearFree(s_drops);
     s_quads = s_clouds = s_drops = NULL;
+    s_grey = -1.0f;
 }

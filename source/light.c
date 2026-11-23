@@ -37,6 +37,25 @@ static int s_ylo, s_yhi = -1;         /* rows it was asked for */
 static const Chunk *s_at[3][3];       /* [dz + 1][dx + 1]: the chunk one over */
 static bool s_full;                   /* this build's queue turned a cell away */
 
+/* The cells the last build that found a torch set, so the next one clears
+ * only those instead of every row: s_queue[0 .. s_dirty), each pushed once
+ * when set; or, when that list is long, every cell of rows s_dirty_y0 ..
+ * s_dirty_y1. Either way every other cell of s_level is 0. A queue that
+ * filled or wrapped round (settle() and turned-away cells are not in the
+ * list) always counts as long: see the assert. */
+static unsigned s_dirty;
+static int s_dirty_y0, s_dirty_y1 = -1;
+
+_Static_assert((size_t)QUEUE * 8 > sizeof s_level,
+               "a full or wrapped queue (tail >= QUEUE) is cleared row by row");
+
+/* Per grid column (x or z): which chunk over (0, 1, 2 for -1, 0, +1), the
+ * column in it, and its steps to the sampled ring (sample_distance());
+ * and block_solid() of every byte. */
+static uint8_t s_gc[GRID], s_gl[GRID], s_gd[GRID];
+static uint8_t s_solid[256];
+static bool s_tables;
+
 /* The neighbour (NB_*) one chunk over by [dz + 1][dx + 1], as chunk_mesh.c. */
 static const signed char k_nb_at[3][3] = {
     { NB_NEG_X_NEG_Z, NB_NEG_Z, NB_POS_X_NEG_Z },
@@ -69,6 +88,51 @@ static int sample_distance(int x, int y, int z)
     d += z < -1 ? -1 - z : z > CHUNK_SIZE ? z - CHUNK_SIZE : 0;
     d += y < s_ylo ? s_ylo - y : y > s_yhi ? y - s_yhi : 0;
     return d;
+}
+
+/* Is grid cell (gx, y, gz) solid? The same answer as solid_cell(). */
+static bool solid_grid(int gx, int y, int gz)
+{
+    const Chunk *o = s_at[s_gc[gz]][s_gc[gx]];
+
+    return o != NULL && s_solid[o->blocks[y][s_gl[gz]][s_gl[gx]]];
+}
+
+static void make_tables(void)
+{
+    int g;
+
+    for (g = 0; g < GRID; g++) {
+        int l = g - BORDER, d = l < 0 ? -1 : l >= CHUNK_SIZE ? 1 : 0;
+
+        s_gc[g] = (uint8_t)(d + 1);
+        s_gl[g] = (uint8_t)(l - d * CHUNK_SIZE);
+        s_gd[g] = (uint8_t)(l < -1 ? -1 - l : l > CHUNK_SIZE ? l - CHUNK_SIZE : 0);
+    }
+    for (g = 0; g < 256; g++)
+        s_solid[g] = block_solid(g);
+    s_tables = true;
+}
+
+/* Zero the cells the last torch-finding build set (s_dirty above). */
+static void clear_last(void)
+{
+    size_t row = sizeof s_level[0];
+
+    if ((size_t)s_dirty * 8 > (size_t)(s_dirty_y1 - s_dirty_y0 + 1) * row) {
+        if (s_dirty_y1 >= s_dirty_y0)
+            memset(s_level[s_dirty_y0], 0, (size_t)(s_dirty_y1 - s_dirty_y0 + 1) * row);
+    } else {
+        unsigned i;
+
+        for (i = 0; i < s_dirty; i++) {
+            uint32_t q = s_queue[i];
+
+            s_level[q >> 12][q >> 6 & 63][q & 63] = 0;
+        }
+    }
+    s_dirty = 0;
+    s_dirty_y1 = -1;
 }
 
 static void push(unsigned *tail, unsigned head, int gx, int y, int gz)
@@ -113,7 +177,8 @@ static void settle(void)
 }
 
 /* Seed every torch of chunk o (one over by dx, dz) that can light a sampled
- * cell. Clears the rows on the first one. Returns whether there was one. */
+ * cell. Clears the last build's cells on the first one. Returns whether
+ * there was one. */
 static bool seed_chunk(const Chunk *o, int dx, int dz, bool any, unsigned *tail)
 {
     const uint8_t *base = &o->blocks[s_y0][0][0], *p = base;
@@ -129,7 +194,7 @@ static bool seed_chunk(const Chunk *o, int dx, int dz, bool any, unsigned *tail)
         if (sample_distance(x, y, z) > LIGHT_REACH)
             continue;
         if (!any) {
-            memset(s_level[s_y0], 0, (size_t)(s_y1 - s_y0 + 1) * sizeof s_level[0]);
+            clear_last(); /* before the first push: the cells it clears are in s_queue */
             any = true;
         }
         s_level[y][z + BORDER][x + BORDER] = LIGHT_TORCH;
@@ -150,6 +215,8 @@ bool light_build(const Chunk *c, const Chunk *const nb[NB_COUNT], int ylo, int y
     s_yhi = yhi > WORLD_HEIGHT - 1 ? WORLD_HEIGHT - 1 : yhi;
     if (c == NULL || s_ylo > s_yhi)
         return false;
+    if (!s_tables)
+        make_tables();
     for (j = 0; j < 3; j++)
         for (i = 0; i < 3; i++)
             s_at[j][i] = (i == 1 && j == 1) ? c : nb ? nb[k_nb_at[j][i]] : NULL;
@@ -174,13 +241,22 @@ bool light_build(const Chunk *c, const Chunk *const nb[NB_COUNT], int ylo, int y
         for (f = 0; f < 6; f++) {
             int nx = gx + k_step[f][0], ny = y + k_step[f][1], nz = gz + k_step[f][2];
 
+            /* A cell farther than l from every sampled cell can pass on no
+             * light that reaches one (each step costs a level), so it is
+             * left dark: every cell on a lit path to a sampled cell is
+             * nearer it than its level. */
             if (nx < 0 || nx >= GRID || nz < 0 || nz >= GRID || ny < s_y0 || ny > s_y1 ||
-                s_level[ny][nz][nx] >= l || solid_cell(nx - BORDER, ny, nz - BORDER))
+                s_level[ny][nz][nx] >= l ||
+                l <= s_gd[nx] + s_gd[nz] + (ny < s_ylo ? s_ylo - ny : ny > s_yhi ? ny - s_yhi : 0) ||
+                solid_grid(nx, ny, nz))
                 continue;
             s_level[ny][nz][nx] = (uint8_t)l;
             push(&tail, head, nx, ny, nz);
         }
     }
+    s_dirty = tail;
+    s_dirty_y0 = s_y0;
+    s_dirty_y1 = s_y1;
     if (s_full)
         settle();
     return true;
@@ -201,148 +277,4 @@ float light_brightness(int level)
     if (level >= LIGHT_TORCH)
         return 1.0f;
     return (float)level / (float)LIGHT_TORCH;
-}
-
-static void grow(int box[4], int x, int z)
-{
-    if (x < box[0]) box[0] = x;
-    if (z < box[1]) box[1] = z;
-    if (x > box[2]) box[2] = x;
-    if (z > box[3]) box[3] = z;
-}
-
-bool light_touched_box(const World *w, int x, int y, int z, bool torch_edited, int box[4])
-{
-    const int r = LIGHT_REACH;
-    int b[4] = { INT_MAX, INT_MAX, INT_MIN, INT_MIN };
-    int dx, dy, dz;
-
-    if (torch_edited)
-        grow(b, x, z);
-    for (dy = -r; dy <= r; dy++) {
-        int ry = r - (dy < 0 ? -dy : dy);
-
-        if (y + dy < 0 || y + dy >= WORLD_HEIGHT)
-            continue;
-        for (dz = -ry; dz <= ry; dz++) {
-            int rx = ry - (dz < 0 ? -dz : dz);
-
-            for (dx = -rx; dx <= rx; dx++)
-                if (world_get(w, x + dx, y + dy, z + dz) == BLOCK_TORCH)
-                    grow(b, x + dx, z + dz);
-        }
-    }
-    if (b[0] > b[2])
-        return false;
-    /* A changed cell is within r of a torch; a mesh samples one cell past
-     * its chunk on each side. */
-    box[0] = block_to_chunk(b[0] - r - 1);
-    box[1] = block_to_chunk(b[1] - r - 1);
-    box[2] = block_to_chunk(b[2] + r + 1);
-    box[3] = block_to_chunk(b[3] + r + 1);
-    return true;
-}
-
-/* light_world_level() searches breadth first out from the cell itself, over
- * open cells, for the nearest torch: the first one found, d steps away,
- * gives LIGHT_TORCH - d, the most any torch can (the rule above, walked
- * backwards: a path from a torch is a path to it). Every cell it looks at
- * is within LIGHT_REACH of the cell, so in a cube NEAR across round it and
- * in its chunk or the eight round that (LIGHT_REACH < CHUNK_SIZE). s_seen
- * marks the cells already queued with this search's stamp, so it is
- * cleared only once every 255 searches. */
-#define NEAR (2 * LIGHT_REACH + 1)
-#define NEAR_QUEUE 4096 /* more than the 3,303 cells within LIGHT_REACH steps */
-
-_Static_assert(LIGHT_REACH < CHUNK_SIZE, "the search must stay in the 3 x 3 chunks");
-_Static_assert(NEAR <= 32, "queue cells pack x, y and z in 5 bits each");
-
-static uint8_t s_seen[NEAR][NEAR][NEAR];
-static uint8_t s_stamp;
-static uint32_t s_near[NEAR_QUEUE];
-
-/* Whether any torch of the 3 x 3 chunks at[][] is within LIGHT_REACH steps
- * of local cell (lx, y, lz), walls aside: a quick scan (as light_build()'s)
- * that spares the search in open ground, where no torch is near. A torch
- * farther than that can light nothing here, whatever lies between. */
-static bool torch_near(const Chunk *at[3][3], int lx, int y, int lz)
-{
-    int y0 = y - LIGHT_REACH < 0 ? 0 : y - LIGHT_REACH;
-    int y1 = y + LIGHT_REACH > WORLD_HEIGHT - 1 ? WORLD_HEIGHT - 1 : y + LIGHT_REACH;
-    int i, j;
-
-    for (j = 0; j < 3; j++)
-        for (i = 0; i < 3; i++) {
-            const uint8_t *base, *p, *end;
-
-            if (at[j][i] == NULL)
-                continue;
-            base = p = &at[j][i]->blocks[y0][0][0];
-            end = base + (size_t)(y1 - y0 + 1) * CHUNK_SIZE * CHUNK_SIZE;
-            while ((p = memchr(p, BLOCK_TORCH, (size_t)(end - p))) != NULL) {
-                size_t off = (size_t)(p - base);
-                int ty = y0 + (int)(off / (CHUNK_SIZE * CHUNK_SIZE));
-                int tz = (int)(off / CHUNK_SIZE % CHUNK_SIZE) + (j - 1) * CHUNK_SIZE;
-                int tx = (int)(off % CHUNK_SIZE) + (i - 1) * CHUNK_SIZE;
-
-                p++;
-                if (abs(tx - lx) + abs(ty - y) + abs(tz - lz) <= LIGHT_REACH)
-                    return true;
-            }
-        }
-    return false;
-}
-
-int light_world_level(const World *w, int x, int y, int z)
-{
-    int cx = block_to_chunk(x), cz = block_to_chunk(z), i, j, b;
-    const Chunk *c = world_chunk(w, cx, cz), *at[3][3];
-    const Chunk *nb[NB_COUNT];
-    int lx = x - cx * CHUNK_SIZE, lz = z - cz * CHUNK_SIZE;
-    unsigned head = 0, tail = 0;
-
-    if (c == NULL || y < 0 || y >= WORLD_HEIGHT)
-        return 0;
-    b = c->blocks[y][lz][lx];
-    if (b == BLOCK_TORCH)
-        return LIGHT_TORCH;
-    if (block_solid(b))
-        return 0;
-    world_neighbours(w, cx, cz, nb);
-    for (j = 0; j < 3; j++)
-        for (i = 0; i < 3; i++)
-            at[j][i] = (i == 1 && j == 1) ? c : nb[k_nb_at[j][i]];
-    if (!torch_near(at, lx, y, lz))
-        return 0;
-    if (++s_stamp == 0) {
-        memset(s_seen, 0, sizeof s_seen);
-        s_stamp = 1;
-    }
-    s_seen[LIGHT_REACH][LIGHT_REACH][LIGHT_REACH] = s_stamp;
-    s_near[tail++] = (uint32_t)LIGHT_REACH << 10 | (uint32_t)LIGHT_REACH << 5 | LIGHT_REACH;
-    while (head != tail) {
-        uint32_t q = s_near[head++];
-        int gx = (int)(q & 31), gy = (int)(q >> 5 & 31), gz = (int)(q >> 10 & 31);
-        int d = (int)(q >> 15) + 1, f; /* the steps to each neighbour */
-
-        for (f = 0; f < 6; f++) {
-            int nx = gx + k_step[f][0], ny = gy + k_step[f][1], nz = gz + k_step[f][2];
-            int bx = lx + nx - LIGHT_REACH, by = y + ny - LIGHT_REACH, bz = lz + nz - LIGHT_REACH;
-            int dx = bx < 0 ? -1 : bx >= CHUNK_SIZE ? 1 : 0;
-            int dz = bz < 0 ? -1 : bz >= CHUNK_SIZE ? 1 : 0;
-            const Chunk *o;
-
-            if (by < 0 || by >= WORLD_HEIGHT || s_seen[ny][nz][nx] == s_stamp)
-                continue;
-            s_seen[ny][nz][nx] = s_stamp;
-            o = at[dz + 1][dx + 1];
-            b = o ? o->blocks[by][bz - dz * CHUNK_SIZE][bx - dx * CHUNK_SIZE] : BLOCK_AIR;
-            if (b == BLOCK_TORCH)
-                return LIGHT_TORCH - d;
-            if (!block_solid(b) && d < LIGHT_REACH && tail < NEAR_QUEUE)
-                s_near[tail++] = (uint32_t)d << 15 | (uint32_t)nz << 10 | (uint32_t)ny << 5 |
-                                 (uint32_t)nx;
-        }
-    }
-    return 0;
 }

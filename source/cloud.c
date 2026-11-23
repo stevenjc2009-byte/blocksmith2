@@ -1,5 +1,6 @@
 #include <math.h>
 #include <stdint.h>
+#include <string.h>
 
 #include "block.h"
 #include "blocktex.h"
@@ -29,12 +30,34 @@ static float value(int i, int j)
     return (float)(h >> 8) / 16777216.0f;
 }
 
-bool cloud_at(int i, int j)
+static bool worked_out(int i, int j)
 {
     float v = 2.0f * value(i, j) + value(i - 1, j) + value(i + 1, j) + value(i, j - 1) +
               value(i, j + 1);
 
     return v > 6.0f * CLOUD_LEVEL;
+}
+
+/* The whole pattern, one bit a cell, worked out at the first call (fix
+ * batch, problem 9: the six hashes a cell took were most of the clouds'
+ * time each frame). */
+static uint32_t s_rows[CLOUD_PERIOD][(CLOUD_PERIOD + 31) / 32];
+static bool s_rows_ready;
+
+bool cloud_at(int i, int j)
+{
+    uint32_t a = wrap(i), b = wrap(j);
+
+    if (!s_rows_ready) {
+        int x, y;
+
+        for (y = 0; y < CLOUD_PERIOD; y++)
+            for (x = 0; x < CLOUD_PERIOD; x++)
+                if (worked_out(x, y))
+                    s_rows[y][x >> 5] |= 1u << (x & 31);
+        s_rows_ready = true;
+    }
+    return s_rows[b][a >> 5] >> (a & 31) & 1u;
 }
 
 float cloud_shift(float t)
@@ -74,24 +97,48 @@ static const struct {
     { FACE_POS_X, 1, 0 }, { FACE_NEG_X, -1, 0 }, { FACE_POS_Z, 0, 1 }, { FACE_NEG_Z, 0, -1 },
 };
 
-int cloud_build(float ex, float ez, float t, MeshVertex out[CLOUD_VERTS_MAX])
+void cloud_cells(float px, float ez, CloudCells *out)
 {
-    float shift = cloud_shift(t);
-    float px = ex - shift; /* the eye in the pattern, before the drift */
     int i0 = (int)floorf((px - CLOUD_RADIUS) / CLOUD_CELL);
     int i1 = (int)floorf((px + CLOUD_RADIUS) / CLOUD_CELL);
     int j0 = (int)floorf((ez - CLOUD_RADIUS) / CLOUD_CELL);
     int j1 = (int)floorf((ez + CLOUD_RADIUS) / CLOUD_CELL);
-    int i, j, k, n = 0;
+    int i, j;
 
+    memset(out, 0, sizeof *out);
+    out->i0 = i0;
+    out->j0 = j0;
+    if (i1 > i0 + CLOUD_SPAN - 1) /* never: CLOUD_SPAN has room to spare */
+        i1 = i0 + CLOUD_SPAN - 1;
+    if (j1 > j0 + CLOUD_SPAN - 1)
+        j1 = j0 + CLOUD_SPAN - 1;
     for (j = j0; j <= j1; j++) {
         for (i = i0; i <= i1; i++) {
             float x0 = (float)(i * CLOUD_CELL), z0 = (float)(j * CLOUD_CELL);
             /* The nearest point of the cell to the eye, across the ground. */
             float dx = fminf(fmaxf(px, x0), x0 + CLOUD_CELL) - px;
             float dz = fminf(fmaxf(ez, z0), z0 + CLOUD_CELL) - ez;
+            int bit = (j - j0) * CLOUD_SPAN + (i - i0);
 
-            if (!cloud_at(i, j) || dx * dx + dz * dz > CLOUD_RADIUS * CLOUD_RADIUS)
+            if (cloud_at(i, j) && dx * dx + dz * dz <= CLOUD_RADIUS * CLOUD_RADIUS)
+                out->bits[bit >> 5] |= 1u << (bit & 31);
+        }
+    }
+}
+
+int cloud_build(float ex, float ez, float t, MeshVertex out[CLOUD_VERTS_MAX])
+{
+    float shift = cloud_shift(t);
+    CloudCells cells;
+    int a, b, k, n = 0;
+
+    cloud_cells(ex - shift, ez, &cells); /* the eye in the pattern, before the drift */
+    for (b = 0; b < CLOUD_SPAN; b++) {
+        for (a = 0; a < CLOUD_SPAN; a++) {
+            int i = cells.i0 + a, j = cells.j0 + b, bit = b * CLOUD_SPAN + a;
+            float x0 = (float)(i * CLOUD_CELL), z0 = (float)(j * CLOUD_CELL);
+
+            if (!(cells.bits[bit >> 5] >> (bit & 31) & 1u))
                 continue;
             if (n + 6 * MESH_FACE_VERTS > CLOUD_VERTS_MAX)
                 return n; /* never, by the PC tests; a whole cell or none */

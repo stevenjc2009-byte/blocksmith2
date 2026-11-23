@@ -2,6 +2,7 @@
 #define CLOUD_H
 
 #include <stdbool.h>
+#include <stdint.h>
 
 #include "mesh.h"
 
@@ -34,6 +35,20 @@
  * tests try every cell of the pattern). */
 #define CLOUD_VERTS_MAX 3072
 
+/* Cells across the most cloud_cells() looks at each way: the eye's square,
+ * CLOUD_RADIUS either side, spans 2 * CLOUD_RADIUS / CLOUD_CELL + 1 cells,
+ * and one more for rounding. */
+#define CLOUD_SPAN (2 * (int)CLOUD_RADIUS / CLOUD_CELL + 2)
+
+/* The cells cloud_build() draws (fix batch, problem 9: skydraw.c builds the
+ * clouds again only when these change): bit (j - j0) * CLOUD_SPAN +
+ * (i - i0) is cell (i, j). Every other bit is 0, so two can be compared
+ * whole (memcmp()). */
+typedef struct {
+    int i0, j0;
+    uint32_t bits[(CLOUD_SPAN * CLOUD_SPAN + 31) / 32];
+} CloudCells;
+
 /* Is cell (i, j) cloud? Any i and j; the pattern repeats every
  * CLOUD_PERIOD cells. */
 bool cloud_at(int i, int j);
@@ -41,6 +56,11 @@ bool cloud_at(int i, int j);
 /* How far east (+x, in blocks) the pattern has drifted at time of day t
  * (0 .. 1, sky.h): 0 at t = 0, one whole period at t = 1. */
 float cloud_shift(float t);
+
+/* Which cells cloud_build() draws round the eye at (px, ez) in the pattern,
+ * before the drift (px = the eye's x - cloud_shift(t)): the cloud cells any
+ * part of which is within CLOUD_RADIUS. */
+void cloud_cells(float px, float ez, CloudCells *out);
 
 /* The clouds round the eye at (ex, ez) across the ground, at time of day t:
  * every face of every cloud cell any part of which is within CLOUD_RADIUS,

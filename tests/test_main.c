@@ -49,6 +49,7 @@ int main(void)
     test_weather();
     test_weather_drops();
     test_weather_save();
+    test_save_job();
 
     printf("PC tests: %d checks, %d failed\n", g_checks, g_fails);
     if (g_checks == 0) {

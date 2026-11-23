@@ -213,6 +213,31 @@ static void test_full_chunk(void)
     CHECK_EQ_INT(chunk_face_visible(&s_c, nb, 5, 60, 7, FACE_POS_X), 0);   /* below the pit */
 }
 
+/* A build must not lean on a count just before it: after counting another
+ * chunk (full of stone up to the top layer, so every layer it judged was
+ * solid), a build alone must give the same mesh as count-then-build. */
+static void test_build_without_count(void)
+{
+    static Chunk full;
+    MeshVertex *want, *got;
+    int n, m;
+
+    chunk_clear(&s_c);
+    chunk_set(&s_c, 3, 10, 4, BLOCK_STONE);
+    chunk_set(&s_c, 9, 10, 9, BLOCK_GRASS);
+    n = build(k_none, 0.0f, 0.0f, &want);
+    CHECK_EQ_INT(n, 12 * MESH_FACE_VERTS);
+    memset(full.blocks, BLOCK_STONE, sizeof full.blocks);
+    chunk_set(&full, 0, WORLD_HEIGHT - 1, 0, BLOCK_AIR);
+    CHECK_EQ_INT(chunk_mesh_count(&full, k_none) > 0, 1);
+    got = malloc((size_t)(n > 0 ? n : 1) * sizeof *got);
+    m = chunk_mesh_build(&s_c, k_none, 0.0f, 0.0f, got, n);
+    CHECK_EQ_INT(m, n);
+    CHECK_EQ_INT(m == n && n > 0 && memcmp(want, got, (size_t)n * sizeof *got) == 0, 1);
+    free(want);
+    free(got);
+}
+
 void test_chunk(void)
 {
     test_storage();
@@ -221,4 +246,5 @@ void test_chunk(void)
     test_world_top_and_bottom();
     test_chunk_edges();
     test_full_chunk();
+    test_build_without_count();
 }

@@ -1,6 +1,7 @@
 #include <3ds.h>
 #include <string.h>
 
+#include "bgjob.h"
 #include "frame.h"
 #include "gpu.h"
 #include "newworld.h"
@@ -111,6 +112,60 @@ static void delete_chosen(WorldList *l, SaveSettings *kept)
     }
 }
 
+/* A backup or a restore of one world, run on bgjob.h's thread (fix batch,
+ * problem 6: it stopped the list for half a second or more). While it
+ * runs the list is drawn with a note and keys and touches wait; nothing
+ * else here touches the SD card meanwhile. The rows' names are read again
+ * on the thread too, once it is done (on the game's thread they took a
+ * tenth of a second). */
+typedef struct {
+    int id;
+    bool restore;
+    WorldList list; /* the list as it started; it cannot move meanwhile */
+    char names[WORLDLIST_ROWS][WORLDNAME_SIZE];
+    bool backed[WORLDLIST_ROWS];
+} Copying;
+
+static Copying s_copying;
+
+static int copy_world(void *arg)
+{
+    Copying *c = arg;
+    int ok = c->restore ? save_backup_restore(SAVE_ROOT, c->id) : save_backup_make(SAVE_ROOT, c->id);
+
+    read_names(&c->list, c->names, c->backed); /* RESTORE shown, an old name back */
+    return ok;
+}
+
+static void copy_start(Note *n, const WorldList *l, bool restore)
+{
+    s_copying.id = s_ids[l->sel];
+    s_copying.restore = restore;
+    s_copying.list = *l;
+    bgjob_start(copy_world, &s_copying);
+    n->text = restore ? "RESTORING" : "BACKING UP";
+    n->failed = false;
+    n->until = UINT64_MAX;
+}
+
+/* The copy has ended: its note, the rows' names and backups as it left
+ * them, and true. */
+static bool copy_done(Note *n, char names[WORLDLIST_ROWS][WORLDNAME_SIZE],
+                      bool backed[WORLDLIST_ROWS])
+{
+    int ok;
+
+    if (!bgjob_collect(&ok))
+        return false;
+    memcpy(names, s_copying.names, sizeof s_copying.names);
+    memcpy(backed, s_copying.backed, sizeof s_copying.backed);
+    if (s_copying.restore)
+        note_show(n, ok, "WORLD RESTORED", "RESTORE FAILED");
+    else
+        note_show(n, ok, "BACKUP MADE", "BACKUP FAILED");
+    return true;
+}
+
 StartChoice start_choose_world(uint32_t *seed, SaveSettings *kept, int *world, FpsCounter *fps,
                                u64 *paced)
 {
@@ -139,8 +194,17 @@ StartChoice start_choose_world(uint32_t *seed, SaveSettings *kept, int *world, F
         hidScanInput();
         down = hidKeysDown();
         moved = hidKeysDownRepeat();
-        if (down & KEY_START)
+        if (bgjob_started()) { /* a backup or a restore: only START, after it */
+            if (copy_done(&note, names, backed))
+                names_top = list.top; /* read on the thread */
+            down &= KEY_START;
+            moved = 0;
+        }
+        if (down & KEY_START) {
+            bgjob_wait();
+            copy_done(&note, names, backed);
             return START_QUIT;
+        }
         if (down & KEY_TOUCH) {
             touchPosition touch;
 
@@ -182,9 +246,7 @@ StartChoice start_choose_world(uint32_t *seed, SaveSettings *kept, int *world, F
                 save_name_read(SAVE_ROOT, s_ids[list.sel], asked);
                 screen = SCREEN_ASK;
             } else if ((down & KEY_R) || b == WORLDLIST_BACKUP) {
-                note_show(&note, save_backup_make(SAVE_ROOT, s_ids[list.sel]), "BACKUP MADE",
-                          "BACKUP FAILED");
-                names_top = -1; /* read again: RESTORE shown */
+                copy_start(&note, &list, false);
             } else if (((down & KEY_B) || b == WORLDLIST_RESTORE) && list.backed_up) {
                 asking = WORLDLIST_ASKING_RESTORE;
                 save_name_read(SAVE_ROOT, s_ids[list.sel], asked);
@@ -198,13 +260,7 @@ StartChoice start_choose_world(uint32_t *seed, SaveSettings *kept, int *world, F
                 names_top = -1;
                 screen = list.count > 0 ? SCREEN_LIST : SCREEN_NEW;
             } else if ((down & KEY_A) || a == WORLDLIST_ASK_DELETE) {
-                if (asking == WORLDLIST_ASKING_RESTORE)
-                    note_show(&note, save_backup_restore(SAVE_ROOT, s_ids[list.sel]),
-                              "WORLD RESTORED", "RESTORE FAILED");
-                else
-                    note_show(&note, save_backup_make(SAVE_ROOT, s_ids[list.sel]), "BACKUP MADE",
-                              "BACKUP FAILED");
-                names_top = -1; /* a restore can bring an old name back */
+                copy_start(&note, &list, asking == WORLDLIST_ASKING_RESTORE);
                 screen = SCREEN_LIST;
             } else if ((down & KEY_B) || a == WORLDLIST_ASK_KEEP) {
                 screen = SCREEN_LIST;
@@ -243,5 +299,7 @@ StartChoice start_choose_world(uint32_t *seed, SaveSettings *kept, int *world, F
         gpu_frame_end();
         frame_end(fps, paced);
     }
+    bgjob_wait(); /* the system closing the game */
+    copy_done(&note, names, backed);
     return START_QUIT;
 }

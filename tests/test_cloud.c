@@ -244,4 +244,5 @@ void test_cloud(void)
     test_build();
     test_most();
     test_layer();
+    test_cloud_cells();
 }
