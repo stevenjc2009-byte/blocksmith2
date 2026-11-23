@@ -1,3 +1,5 @@
+#include <stdlib.h>
+
 #include "block.h"
 #include "blocktex.h"
 #include "mesh.h"
@@ -17,23 +19,42 @@ static const signed char k_corners[FACE_COUNT][4][3] = {
 
 static const float k_shade[FACE_COUNT] = { 0.8f, 0.8f, 1.0f, 0.5f, 0.6f, 0.6f };
 
-/* Two triangles, both counter-clockwise: corners 0 1 2 and 0 2 3. */
-static const unsigned char k_order[MESH_FACE_VERTS] = { 0, 1, 2, 0, 2, 3 };
+/* Corner shadow levels 0 to MESH_AO_OPEN: 0.6 up to 1.0 in even steps. */
+static const float k_ao[MESH_AO_OPEN + 1] = { 0.6f, 0.6f + 0.4f / 3.0f, 0.6f + 0.8f / 3.0f, 1.0f };
+
+/* Two triangles, both counter-clockwise: corners 0 1 2 and 0 2 3 (cut
+ * along 0-2), or 1 2 3 and 1 3 0 (cut along 1-3). */
+static const unsigned char k_order[2][MESH_FACE_VERTS] = { { 0, 1, 2, 0, 2, 3 }, { 1, 2, 3, 1, 3, 0 } };
+
+static const unsigned char k_open[4] = { MESH_AO_OPEN, MESH_AO_OPEN, MESH_AO_OPEN, MESH_AO_OPEN };
 
 float mesh_face_shade(int face)
 {
     return (face >= 0 && face < FACE_COUNT) ? k_shade[face] : 0.0f;
 }
 
-void mesh_face(MeshVertex out[MESH_FACE_VERTS], float x, float y, float z,
-               int face, int tile)
+float mesh_ao_scale(int level)
+{
+    return (level >= 0 && level <= MESH_AO_OPEN) ? k_ao[level] : 1.0f;
+}
+
+const signed char *mesh_face_corner(int face, int corner)
+{
+    if (face < 0 || face >= FACE_COUNT || corner < 0 || corner > 3)
+        return k_corners[0][0];
+    return k_corners[face][corner];
+}
+
+void mesh_face_ao(MeshVertex out[MESH_FACE_VERTS], float x, float y, float z,
+                  int face, int tile, const unsigned char ao[4])
 {
     float uv[4], shade = k_shade[face];
+    const unsigned char *order = k_order[abs(ao[0] - ao[2]) > abs(ao[1] - ao[3])];
     int i;
 
     blocktex_tile_uv(tile, uv);
     for (i = 0; i < MESH_FACE_VERTS; i++) {
-        int c = k_order[i];
+        int c = order[i];
         const signed char *p = k_corners[face][c];
         MeshVertex *v = &out[i];
 
@@ -42,8 +63,14 @@ void mesh_face(MeshVertex out[MESH_FACE_VERTS], float x, float y, float z,
         v->z = z + p[2];
         v->u = (c == 1 || c == 2) ? uv[2] : uv[0]; /* right corners get the right edge */
         v->v = (c >= 2) ? uv[3] : uv[1];           /* top corners get the top edge */
-        v->r = v->g = v->b = shade;
+        v->r = v->g = v->b = shade * mesh_ao_scale(ao[c]);
     }
+}
+
+void mesh_face(MeshVertex out[MESH_FACE_VERTS], float x, float y, float z,
+               int face, int tile)
+{
+    mesh_face_ao(out, x, y, z, face, tile, k_open);
 }
 
 int mesh_block(MeshVertex *out, float x, float y, float z, int block)

@@ -89,7 +89,7 @@ bool meshes_stream(World *w, int pcx, int pcz, int view, int jobs)
 
 bool meshes_rebuild_around(const World *w, int x, int z)
 {
-    int touched[3][2];
+    int touched[WORLD_TOUCHED_MAX][2];
     int n, k;
 
     n = world_touched_chunks(w, x, z, touched);

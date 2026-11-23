@@ -14,13 +14,14 @@
  * - Chunks up to ring view, the view distance, are drawn (view 3: a 7 x 7
  *   square). The settings screen chooses it (roadmap row 2-02).
  * - One ring further, ring view + 1, is loaded too, so every drawn chunk
- *   has all four neighbours and its mesh hides the faces between them from
- *   the start (no rebuild when a neighbour arrives).
+ *   has all eight neighbours and its mesh hides the faces between them,
+ *   and shades its corners from theirs (row 3-01), from the start (no
+ *   rebuild when a neighbour arrives).
  * - Everything further away is put away (a changed chunk saved first, if
  *   the world has a store: world.h).
  *
  * New work comes as jobs, one at a time, nearest first: load a chunk (make
- * its ground), or build a chunk's mesh once it and its four neighbours are
+ * its ground), or build a chunk's mesh once it and its eight neighbours are
  * loaded. The order is: load ring 0, load ring 1, mesh ring 0, load ring 2,
  * mesh ring 1, ... load ring view + 1, mesh ring view. Within a ring the
  * chunk nearest the player's chunk (straight-line distance between chunk

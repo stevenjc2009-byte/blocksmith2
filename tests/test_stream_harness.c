@@ -37,10 +37,14 @@ bool run_job(int pcx, int pcz, StreamJob *job)
         s_loads++;
     } else {
         const Chunk *nb[NB_COUNT];
+        bool all = true;
+        int i;
 
         world_neighbours(&s_w, job->cx, job->cz, nb);
-        s_bad_mesh += world_chunk(&s_w, job->cx, job->cz) == NULL || !nb[0] || !nb[1] || !nb[2] ||
-                      !nb[3] || s_meshed[world_slot(job->cz)][world_slot(job->cx)];
+        for (i = 0; i < NB_COUNT; i++) /* the four across a corner too (row 3-01) */
+            all = all && nb[i] != NULL;
+        s_bad_mesh += world_chunk(&s_w, job->cx, job->cz) == NULL || !all ||
+                      s_meshed[world_slot(job->cz)][world_slot(job->cx)];
         s_meshed[world_slot(job->cz)][world_slot(job->cx)] = true;
         s_meshes++;
     }

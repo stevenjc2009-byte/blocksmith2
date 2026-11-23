@@ -83,5 +83,12 @@ void test_worldlist(void);
 void test_worldlist_draw(void); /* test_worldlist_draw.c, called by test_worldlist() */
 void test_lidsave(void);
 void test_save_backup(void);
+void test_ao(void);
+
+/* Row 3-01's reference corner shadow (test_ao.c): the level (0 to
+ * MESH_AO_OPEN) of corner `corner` of face `face` of the block at (bx, by,
+ * bz), from the rule in chunk_mesh.h, solid() answering for every cell. */
+int test_ref_ao(int (*solid)(void *ctx, int x, int y, int z), void *ctx,
+                int bx, int by, int bz, int face, int corner);
 
 #endif

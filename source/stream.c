@@ -39,7 +39,7 @@ static bool loaded(const World *w, int cx, int cz)
     return world_chunk(w, cx, cz) != NULL;
 }
 
-/* Loaded and not meshed yet. Its four neighbours are always loaded by then:
+/* Loaded and not meshed yet. Its eight neighbours are always loaded by then:
  * stream_next() only meshes ring d - 1 once every chunk out to ring d is
  * loaded, and a chunk's neighbours are at most one ring further out. */
 static bool meshable(const World *w, const bool meshed[WORLD_SLOTS][WORLD_SLOTS], int cx, int cz)

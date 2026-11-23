@@ -9,30 +9,63 @@ static const signed char k_step[FACE_COUNT][3] = {
     { 1, 0, 0 }, { -1, 0, 0 }, { 0, 1, 0 }, { 0, -1, 0 }, { 0, 0, 1 }, { 0, 0, -1 },
 };
 
-/* Is the cell at local (x, y, z) solid? (x, y, z) is at most one step
+/* The neighbour (NB_*) one chunk over by [dz + 1][dx + 1]; the middle is
+ * the chunk itself (never looked up). */
+static const signed char k_nb_at[3][3] = {
+    { NB_NEG_X_NEG_Z, NB_NEG_Z, NB_POS_X_NEG_Z },
+    { NB_NEG_X, -1, NB_POS_X },
+    { NB_NEG_X_POS_Z, NB_POS_Z, NB_POS_X_POS_Z },
+};
+
+/* Is the cell at local (x, y, z) solid? x and z are each at most one step
  * outside the chunk. */
 static bool solid_at(const Chunk *c, const Chunk *const nb[NB_COUNT], int x, int y, int z)
 {
     const Chunk *o = c;
+    int dx = x < 0 ? -1 : x >= CHUNK_SIZE ? 1 : 0;
+    int dz = z < 0 ? -1 : z >= CHUNK_SIZE ? 1 : 0;
 
     if (y < 0)
         return true;
     if (y >= WORLD_HEIGHT)
         return false;
-    if (x >= CHUNK_SIZE) {
-        o = nb ? nb[NB_POS_X] : NULL;
-        x -= CHUNK_SIZE;
-    } else if (x < 0) {
-        o = nb ? nb[NB_NEG_X] : NULL;
-        x += CHUNK_SIZE;
-    } else if (z >= CHUNK_SIZE) {
-        o = nb ? nb[NB_POS_Z] : NULL;
-        z -= CHUNK_SIZE;
-    } else if (z < 0) {
-        o = nb ? nb[NB_NEG_Z] : NULL;
-        z += CHUNK_SIZE;
+    if (dx != 0 || dz != 0) {
+        o = nb ? nb[k_nb_at[dz + 1][dx + 1]] : NULL;
+        x -= dx * CHUNK_SIZE;
+        z -= dz * CHUNK_SIZE;
     }
     return o != NULL && o->blocks[y][z][x] != BLOCK_AIR;
+}
+
+/* The two axes (0 x, 1 y, 2 z) across each face, FACE_* order. */
+static const unsigned char k_across[FACE_COUNT][2] = {
+    { 1, 2 }, { 1, 2 }, { 0, 2 }, { 0, 2 }, { 0, 1 }, { 0, 1 },
+};
+
+/* The corner shadow levels (chunk_mesh.h) of face f of the block at local
+ * (x, y, z), corners in mesh_face_corner() order. */
+static void face_ao(const Chunk *c, const Chunk *const nb[NB_COUNT], int x, int y, int z, int f,
+                    unsigned char ao[4])
+{
+    int out[3] = { x + k_step[f][0], y + k_step[f][1], z + k_step[f][2] };
+    int a = k_across[f][0], b = k_across[f][1], i, j, k;
+    bool solid[3][3]; /* the layer outside the face, [b step + 1][a step + 1] */
+
+    for (j = 0; j < 3; j++)
+        for (i = 0; i < 3; i++) {
+            int p[3] = { out[0], out[1], out[2] };
+
+            p[a] += i - 1;
+            p[b] += j - 1;
+            solid[j][i] = (i != 1 || j != 1) && solid_at(c, nb, p[0], p[1], p[2]);
+        }
+    for (k = 0; k < 4; k++) {
+        const signed char *q = mesh_face_corner(f, k);
+        int da = q[a] ? 2 : 0, db = q[b] ? 2 : 0;
+        int s1 = solid[1][da], s2 = solid[db][1], cr = solid[db][da];
+
+        ao[k] = (unsigned char)((s1 && s2) ? 0 : MESH_AO_OPEN - s1 - s2 - cr);
+    }
 }
 
 bool chunk_face_visible(const Chunk *c, const Chunk *const nb[NB_COUNT],
@@ -81,7 +114,7 @@ static void face_layers(const Chunk *c, const Chunk *const nb[NB_COUNT], int *lo
 {
     int low = first_air_layer(c) - 1, i;
 
-    for (i = 0; i < NB_COUNT; i++) {
+    for (i = 0; i < NB_SIDES; i++) {
         int f = first_air_layer(nb ? nb[i] : NULL);
 
         if (f < low)
@@ -121,12 +154,15 @@ int chunk_mesh_build(const Chunk *c, const Chunk *const nb[NB_COUNT], float ox, 
                 if (b == BLOCK_AIR)
                     continue;
                 for (f = 0; f < FACE_COUNT; f++) {
+                    unsigned char ao[4];
+
                     if (!chunk_face_visible(c, nb, x, y, z, f))
                         continue;
                     if (n + MESH_FACE_VERTS > max_verts)
                         return -1;
-                    mesh_face(out + n, ox + (float)x, (float)y, oz + (float)z, f,
-                              block_face_tile(b, f));
+                    face_ao(c, nb, x, y, z, f, ao);
+                    mesh_face_ao(out + n, ox + (float)x, (float)y, oz + (float)z, f,
+                                 block_face_tile(b, f), ao);
                     n += MESH_FACE_VERTS;
                 }
             }

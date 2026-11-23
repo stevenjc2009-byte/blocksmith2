@@ -39,6 +39,7 @@ int main(void)
     test_worldlist();
     test_lidsave();
     test_save_backup();
+    test_ao();
 
     printf("PC tests: %d checks, %d failed\n", g_checks, g_fails);
     if (g_checks == 0) {

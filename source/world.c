@@ -131,7 +131,7 @@ bool world_break(World *w, int x, int y, int z)
     return true;
 }
 
-static int add_chunk(const World *w, int out[3][2], int n, int cx, int cz)
+static int add_chunk(const World *w, int out[WORLD_TOUCHED_MAX][2], int n, int cx, int cz)
 {
     if (!world_chunk(w, cx, cz))
         return n;
@@ -140,23 +140,23 @@ static int add_chunk(const World *w, int out[3][2], int n, int cx, int cz)
     return n + 1;
 }
 
-int world_touched_chunks(const World *w, int x, int z, int out[3][2])
+int world_touched_chunks(const World *w, int x, int z, int out[WORLD_TOUCHED_MAX][2])
 {
     int cx = block_to_chunk(x), cz = block_to_chunk(z);
     int lx = block_to_local(x), lz = block_to_local(z);
+    int dx = lx == 0 ? -1 : lx == CHUNK_SIZE - 1 ? 1 : 0;
+    int dz = lz == 0 ? -1 : lz == CHUNK_SIZE - 1 ? 1 : 0;
     int n;
 
     if (!world_chunk(w, cx, cz))
         return 0;
     n = add_chunk(w, out, 0, cx, cz);
-    if (lx == 0)
-        n = add_chunk(w, out, n, cx - 1, cz);
-    else if (lx == CHUNK_SIZE - 1)
-        n = add_chunk(w, out, n, cx + 1, cz);
-    if (lz == 0)
-        n = add_chunk(w, out, n, cx, cz - 1);
-    else if (lz == CHUNK_SIZE - 1)
-        n = add_chunk(w, out, n, cx, cz + 1);
+    if (dx != 0)
+        n = add_chunk(w, out, n, cx + dx, cz);
+    if (dz != 0)
+        n = add_chunk(w, out, n, cx, cz + dz);
+    if (dx != 0 && dz != 0)
+        n = add_chunk(w, out, n, cx + dx, cz + dz);
     return n;
 }
 
@@ -166,4 +166,8 @@ void world_neighbours(const World *w, int cx, int cz, const Chunk *nb[NB_COUNT])
     nb[NB_NEG_X] = world_chunk(w, cx - 1, cz);
     nb[NB_POS_Z] = world_chunk(w, cx, cz + 1);
     nb[NB_NEG_Z] = world_chunk(w, cx, cz - 1);
+    nb[NB_POS_X_POS_Z] = world_chunk(w, cx + 1, cz + 1);
+    nb[NB_NEG_X_POS_Z] = world_chunk(w, cx - 1, cz + 1);
+    nb[NB_POS_X_NEG_Z] = world_chunk(w, cx + 1, cz - 1);
+    nb[NB_NEG_X_NEG_Z] = world_chunk(w, cx - 1, cz - 1);
 }

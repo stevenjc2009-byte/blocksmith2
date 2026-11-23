@@ -14,7 +14,9 @@
 static Chunk s_c;
 static Chunk s_nb[NB_COUNT];
 
-static const Chunk *const k_none[NB_COUNT] = { NULL, NULL, NULL, NULL };
+static const Chunk *const k_none[NB_COUNT] = { NULL };
+
+#define ALL_NB { &s_nb[0], &s_nb[1], &s_nb[2], &s_nb[3], &s_nb[4], &s_nb[5], &s_nb[6], &s_nb[7] }
 
 /* Build the chunk's mesh into a fresh buffer; returns the vertex count or
  * -1, and hands the buffer back (caller frees). */
@@ -28,30 +30,49 @@ static int build(const Chunk *const nb[NB_COUNT], float ox, float oz, MeshVertex
     return n;
 }
 
-/* An independent answer to "is this face seen?", written from the rules in
- * chunk_mesh.h, not from chunk_mesh.c. */
+/* Which neighbour holds the cell one chunk over by (dx, dz), each -1, 0
+ * or 1 and not both 0, from the list order in chunk_mesh.h. */
+static int ref_nb(int dx, int dz)
+{
+    if (dz == 0)
+        return dx > 0 ? NB_POS_X : NB_NEG_X;
+    if (dx == 0)
+        return dz > 0 ? NB_POS_Z : NB_NEG_Z;
+    if (dz > 0)
+        return dx > 0 ? NB_POS_X_POS_Z : NB_NEG_X_POS_Z;
+    return dx > 0 ? NB_POS_X_NEG_Z : NB_NEG_X_NEG_Z;
+}
+
+/* An independent answer to "is this cell solid?" (so "is this face
+ * seen?"), written from the rules in chunk_mesh.h, not from chunk_mesh.c.
+ * x and z may be one chunk past either side, or past a corner. */
 static int ref_solid(const Chunk *c, const Chunk *const nb[NB_COUNT], int x, int y, int z)
 {
     const Chunk *o = c;
+    int dx = x >= CHUNK_SIZE ? 1 : x < 0 ? -1 : 0, dz = z >= CHUNK_SIZE ? 1 : z < 0 ? -1 : 0;
 
     if (y < 0)
         return 1;
     if (y >= WORLD_HEIGHT)
         return 0;
-    if (x >= CHUNK_SIZE) {
-        o = nb ? nb[NB_POS_X] : NULL;
-        x -= CHUNK_SIZE;
-    } else if (x < 0) {
-        o = nb ? nb[NB_NEG_X] : NULL;
-        x += CHUNK_SIZE;
-    } else if (z >= CHUNK_SIZE) {
-        o = nb ? nb[NB_POS_Z] : NULL;
-        z -= CHUNK_SIZE;
-    } else if (z < 0) {
-        o = nb ? nb[NB_NEG_Z] : NULL;
-        z += CHUNK_SIZE;
+    if (dx || dz) {
+        o = nb ? nb[ref_nb(dx, dz)] : NULL;
+        x -= dx * CHUNK_SIZE;
+        z -= dz * CHUNK_SIZE;
     }
     return o && chunk_get(o, x, y, z) != BLOCK_AIR;
+}
+
+typedef struct {
+    const Chunk *c;
+    const Chunk *const *nb;
+} RefCtx;
+
+static int ctx_solid(void *ctx, int x, int y, int z)
+{
+    const RefCtx *r = ctx;
+
+    return ref_solid(r->c, r->nb, x, y, z);
 }
 
 static const int k_step[FACE_COUNT][3] = {
@@ -78,11 +99,13 @@ static void random_fill(Chunk *c, int ylo, int yhi, int pct)
                     chunk_set(c, x, y, z, 1 + rnd(BLOCK_COUNT - 1));
 }
 
-/* The reference mesh: every block of s_c, every face, through ref_solid().
- * Writes the faces to out when it is not NULL; returns how many. */
+/* The reference mesh: every block of s_c, every face, through ref_solid(),
+ * corner shadows from test_ref_ao() (test_ao.c). Writes the faces to out
+ * when it is not NULL; returns how many. */
 static int ref_mesh(const Chunk *const nb[NB_COUNT], float ox, float oz, MeshVertex *out)
 {
-    int x, y, z, f, faces = 0;
+    RefCtx r = { &s_c, nb };
+    int x, y, z, f, k, faces = 0;
 
     for (y = 0; y < WORLD_HEIGHT; y++)
         for (z = 0; z < CHUNK_SIZE; z++)
@@ -93,9 +116,14 @@ static int ref_mesh(const Chunk *const nb[NB_COUNT], float ox, float oz, MeshVer
                     continue;
                 for (f = 0; f < FACE_COUNT; f++)
                     if (!ref_solid(&s_c, nb, x + k_step[f][0], y + k_step[f][1], z + k_step[f][2])) {
-                        if (out)
-                            mesh_face(out + faces * MESH_FACE_VERTS, ox + (float)x, (float)y,
-                                      oz + (float)z, f, block_face_tile(b, f));
+                        if (out) {
+                            unsigned char ao[4];
+
+                            for (k = 0; k < 4; k++)
+                                ao[k] = (unsigned char)test_ref_ao(ctx_solid, &r, x, y, z, f, k);
+                            mesh_face_ao(out + faces * MESH_FACE_VERTS, ox + (float)x, (float)y,
+                                         oz + (float)z, f, block_face_tile(b, f), ao);
+                        }
                         faces++;
                     }
             }
@@ -122,7 +150,7 @@ static int check_reference(const Chunk *const nb[NB_COUNT], float ox, float oz)
 static void test_random_against_reference(void)
 {
     static const unsigned seeds[] = { 1, 7, 42, 1234, 99991 };
-    const Chunk *nb[NB_COUNT] = { &s_nb[0], &s_nb[1], &s_nb[2], &s_nb[3] };
+    const Chunk *nb[NB_COUNT] = ALL_NB;
     size_t si;
 
     for (si = 0; si < sizeof seeds / sizeof seeds[0]; si++) {
@@ -160,8 +188,9 @@ static void dig_and_check(Chunk *c, const Chunk *const nb[NB_COUNT], int x, int 
  * worked out by hand. */
 static void test_buried_layers(void)
 {
-    static const int k_at[NB_COUNT][2] = { { 1, 0 }, { -1, 0 }, { 0, 1 }, { 0, -1 } };
-    const Chunk *nb[NB_COUNT] = { &s_nb[0], &s_nb[1], &s_nb[2], &s_nb[3] };
+    static const int k_at[NB_COUNT][2] = { { 1, 0 }, { -1, 0 }, { 0, 1 }, { 0, -1 },
+                                           { 1, 1 }, { -1, 1 }, { 1, -1 }, { -1, -1 } };
+    const Chunk *nb[NB_COUNT] = ALL_NB;
     const Chunk *some[NB_COUNT];
     int i, k, x, z, low = WORLD_HEIGHT, base;
 
@@ -176,10 +205,13 @@ static void test_buried_layers(void)
 
     base = check_reference(nb, 0.0f, 0.0f);
     CHECK_EQ_INT(base >= CHUNK_SIZE * CHUNK_SIZE, 1);
-    for (k = 0; k < NB_COUNT; k++) { /* a missing neighbour shows that side */
+    for (k = 0; k < NB_COUNT; k++) {
         for (i = 0; i < NB_COUNT; i++)
             some[i] = i == k ? NULL : nb[i];
-        CHECK_EQ_INT(check_reference(some, 0.0f, 0.0f) >= base + CHUNK_SIZE * low, 1);
+        if (k < NB_SIDES) /* a missing side neighbour shows that side */
+            CHECK_EQ_INT(check_reference(some, 0.0f, 0.0f) >= base + CHUNK_SIZE * low, 1);
+        else /* a missing corner one only lightens corner shadows (air) */
+            CHECK_EQ_INT(check_reference(some, 0.0f, 0.0f), base);
     }
     CHECK_EQ_INT(check_reference(NULL, 0.0f, 0.0f) >= base + 4 * CHUNK_SIZE * low, 1);
 

@@ -40,10 +40,11 @@ static void test_break_rules(void)
     CHECK_EQ_INT(world_break(&s_w, 31, 10, 31), 1);
 }
 
-/* Expected list, in order: own chunk, then across x, then across z. */
+/* Expected list, in order: own chunk, then across x, then across z, then
+ * across the corner. */
 static void check_touched(int x, int z, int n, const int want[][2])
 {
-    int out[3][2];
+    int out[WORLD_TOUCHED_MAX][2];
     int got, k;
 
     memset(out, 0x7F, sizeof out);
@@ -62,9 +63,12 @@ static void test_touched_lists(void)
     static const int east[][2] = { { 0, 0 }, { 1, 0 } };
     static const int north[][2] = { { 0, 0 }, { 0, -1 } };
     static const int south[][2] = { { 0, 0 }, { 0, 1 } };
-    static const int nw[][2] = { { 0, 0 }, { -1, 0 }, { 0, -1 } };
-    static const int se[][2] = { { 0, 0 }, { 1, 0 }, { 0, 1 } };
-    static const int neg[][2] = { { -1, -1 }, { 0, -1 }, { -1, 0 } };
+    static const int nw[][2] = { { 0, 0 }, { -1, 0 }, { 0, -1 }, { -1, -1 } };
+    static const int se[][2] = { { 0, 0 }, { 1, 0 }, { 0, 1 }, { 1, 1 } };
+    static const int neg[][2] = { { -1, -1 }, { 0, -1 }, { -1, 0 }, { 0, 0 } };
+    static const int ne[][2] = { { 0, 0 }, { 1, 0 }, { 0, -1 }, { 1, -1 } };
+    static const int sw[][2] = { { -1, 0 }, { -2, 0 }, { -1, 1 }, { -2, 1 } };
+    static const int edge_e_nw[][2] = { { 1, 0 }, { 0, 0 }, { 1, -1 }, { 0, -1 } };
     static const int edge_w[][2] = { { -2, 0 } };
     static const int edge_ne[][2] = { { 1, -2 } };
     static const int corner_nw[][2] = { { -2, -2 } };
@@ -76,9 +80,12 @@ static void test_touched_lists(void)
     check_touched(15, 5, 2, east);
     check_touched(5, 0, 2, north);
     check_touched(5, 15, 2, south);
-    check_touched(0, 0, 3, nw);
-    check_touched(15, 15, 3, se);
-    check_touched(-1, -1, 3, neg);        /* chunk -1, local 15: east and south */
+    check_touched(0, 0, 4, nw);
+    check_touched(15, 15, 4, se);
+    check_touched(-1, -1, 4, neg);        /* chunk -1, local 15: east and south */
+    check_touched(15, 0, 4, ne);          /* the other two corners */
+    check_touched(-16, 15, 4, sw);
+    check_touched(16, 0, 4, edge_e_nw);   /* chunk 1 local 0, 0: the world's last column of chunks */
     check_touched(-32, 5, 1, edge_w);     /* no chunk west of the world */
     check_touched(31, -32, 1, edge_ne);   /* local x 15, z 0: both past the edge */
     check_touched(-32, -32, 1, corner_nw);
@@ -139,7 +146,7 @@ static int s_off_world; /* listed chunks that are not in the world */
  * past the cache). */
 static void break_and_rebuild(int x, int y, int z)
 {
-    int out[3][2];
+    int out[WORLD_TOUCHED_MAX][2];
     int n, k;
 
     if (!world_break(&s_w, x, y, z))

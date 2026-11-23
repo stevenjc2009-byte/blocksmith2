@@ -96,15 +96,20 @@ void world_set(World *w, int x, int y, int z, int block);
  * dig out of it) and for spots outside a loaded chunk. */
 bool world_break(World *w, int x, int y, int z);
 
+/* Most chunks world_touched_chunks() lists. */
+#define WORLD_TOUCHED_MAX 4
+
 /* The chunks whose meshes change when the block at (x, any y, z) changes:
  * its own chunk, then the chunk across each side of it that the block
  * touches (a block on a chunk's edge shows or hides a face drawn by that
- * neighbour). Writes up to 3 chunk (cx, cz) pairs to out and returns how
- * many; none when the block's own chunk is not loaded, and no neighbour
- * that is not loaded. */
-int world_touched_chunks(const World *w, int x, int z, int out[3][2]);
+ * neighbour, and shades its corners), then, for a block on a chunk's
+ * corner, the chunk across that corner (whose corner shadows it reaches,
+ * row 3-01). Writes up to WORLD_TOUCHED_MAX chunk (cx, cz) pairs to out and
+ * returns how many; none when the block's own chunk is not loaded, and no
+ * neighbour that is not loaded. */
+int world_touched_chunks(const World *w, int x, int z, int out[WORLD_TOUCHED_MAX][2]);
 
-/* The four chunks next to chunk (cx, cz), in NB_* order (chunk_mesh.h),
+/* The eight chunks round chunk (cx, cz), in NB_* order (chunk_mesh.h),
  * NULL where one is not loaded, ready for chunk_mesh_build(). */
 void world_neighbours(const World *w, int cx, int cz, const Chunk *nb[NB_COUNT]);
 

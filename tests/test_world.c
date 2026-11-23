@@ -106,12 +106,18 @@ static void test_load(void)
     world_load(&s_w, 14, 0); /* slot of chunk (1, 0) */
     world_load(&s_w, -1, 0);
     world_load(&s_w, 0, 14); /* slot of chunk (0, 1) */
+    world_load(&s_w, 14, 14); /* slot of chunk (1, 1), across a corner */
+    world_load(&s_w, -1, -1);
     CHECK_EQ_INT(world_chunk(&s_w, 0, 0) == C(0, 0), 1);
     world_neighbours(&s_w, 0, 0, nb);
     CHECK_EQ_INT(nb[NB_POS_X] == NULL, 1);
     CHECK_EQ_INT(nb[NB_NEG_X] == C(-1, 0), 1);
     CHECK_EQ_INT(nb[NB_POS_Z] == NULL, 1);
     CHECK_EQ_INT(nb[NB_NEG_Z] == NULL, 1);
+    CHECK_EQ_INT(nb[NB_POS_X_POS_Z] == NULL, 1);
+    CHECK_EQ_INT(nb[NB_NEG_X_NEG_Z] == C(-1, -1), 1);
+    CHECK_EQ_INT(nb[NB_NEG_X_POS_Z] == NULL, 1);
+    CHECK_EQ_INT(nb[NB_POS_X_NEG_Z] == NULL, 1);
     CHECK_EQ_INT(world_get(&s_w, CHUNK_SIZE, 0, 0), BLOCK_AIR);
     CHECK_EQ_INT(world_get(&s_w, 14 * CHUNK_SIZE, 0, 0), BLOCK_STONE);
     CHECK_EQ_INT(world_get(&s_w, 0, 0, CHUNK_SIZE), BLOCK_AIR);
@@ -192,24 +198,47 @@ static void test_neighbours(void)
 {
     const Chunk *nb[NB_COUNT];
 
-    /* Chunk (-1, -1): all four neighbours are there. */
+    /* Chunk (-1, -1): all eight neighbours are there. */
     world_neighbours(&s_w, -1, -1, nb);
     CHECK_EQ_INT(nb[NB_POS_X] == C(0, -1), 1);
     CHECK_EQ_INT(nb[NB_NEG_X] == C(-2, -1), 1);
     CHECK_EQ_INT(nb[NB_POS_Z] == C(-1, 0), 1);
     CHECK_EQ_INT(nb[NB_NEG_Z] == C(-1, -2), 1);
+    CHECK_EQ_INT(nb[NB_POS_X_POS_Z] == C(0, 0), 1);
+    CHECK_EQ_INT(nb[NB_NEG_X_POS_Z] == C(-2, 0), 1);
+    CHECK_EQ_INT(nb[NB_POS_X_NEG_Z] == C(0, -2), 1);
+    CHECK_EQ_INT(nb[NB_NEG_X_NEG_Z] == C(-2, -2), 1);
     /* North-west corner (-2, -2): nothing west or north. */
     world_neighbours(&s_w, -2, -2, nb);
     CHECK_EQ_INT(nb[NB_POS_X] == C(-1, -2), 1);
     CHECK_EQ_INT(nb[NB_NEG_X] == NULL, 1);
     CHECK_EQ_INT(nb[NB_POS_Z] == C(-2, -1), 1);
     CHECK_EQ_INT(nb[NB_NEG_Z] == NULL, 1);
+    CHECK_EQ_INT(nb[NB_POS_X_POS_Z] == C(-1, -1), 1);
+    CHECK_EQ_INT(nb[NB_NEG_X_POS_Z] == NULL, 1);
+    CHECK_EQ_INT(nb[NB_POS_X_NEG_Z] == NULL, 1);
+    CHECK_EQ_INT(nb[NB_NEG_X_NEG_Z] == NULL, 1);
     /* South-east corner (1, 1): nothing east or south. */
     world_neighbours(&s_w, 1, 1, nb);
     CHECK_EQ_INT(nb[NB_POS_X] == NULL, 1);
     CHECK_EQ_INT(nb[NB_NEG_X] == C(0, 1), 1);
     CHECK_EQ_INT(nb[NB_POS_Z] == NULL, 1);
     CHECK_EQ_INT(nb[NB_NEG_Z] == C(1, 0), 1);
+    CHECK_EQ_INT(nb[NB_POS_X_POS_Z] == NULL, 1);
+    CHECK_EQ_INT(nb[NB_NEG_X_POS_Z] == NULL, 1);
+    CHECK_EQ_INT(nb[NB_POS_X_NEG_Z] == NULL, 1);
+    CHECK_EQ_INT(nb[NB_NEG_X_NEG_Z] == C(0, 0), 1);
+    /* North-east (1, -2) and south-west (-2, 1): one across a corner each. */
+    world_neighbours(&s_w, 1, -2, nb);
+    CHECK_EQ_INT(nb[NB_NEG_X_POS_Z] == C(0, -1), 1);
+    CHECK_EQ_INT(nb[NB_POS_X_POS_Z] == NULL, 1);
+    CHECK_EQ_INT(nb[NB_POS_X_NEG_Z] == NULL, 1);
+    CHECK_EQ_INT(nb[NB_NEG_X_NEG_Z] == NULL, 1);
+    world_neighbours(&s_w, -2, 1, nb);
+    CHECK_EQ_INT(nb[NB_POS_X_NEG_Z] == C(-1, 0), 1);
+    CHECK_EQ_INT(nb[NB_POS_X_POS_Z] == NULL, 1);
+    CHECK_EQ_INT(nb[NB_NEG_X_POS_Z] == NULL, 1);
+    CHECK_EQ_INT(nb[NB_NEG_X_NEG_Z] == NULL, 1);
 }
 
 /* Separate reference: is world cell (x, y, z) solid, for face hiding? */
@@ -222,14 +251,21 @@ static int ref_solid(int x, int y, int z)
     return world_get(&s_w, x, y, z) != BLOCK_AIR;
 }
 
+static int world_solid(void *ctx, int x, int y, int z)
+{
+    (void)ctx;
+    return ref_solid(x, y, z);
+}
+
 static const int k_step[FACE_COUNT][3] = {
     { 1, 0, 0 }, { -1, 0, 0 }, { 0, 1, 0 }, { 0, -1, 0 }, { 0, 0, 1 }, { 0, 0, -1 },
 };
 
-/* The faces of chunk (cx, cz) worked out from whole-world blocks. */
+/* The faces of chunk (cx, cz) worked out from whole-world blocks, corner
+ * shadows too (test_ref_ao(), test_ao.c). */
 static int ref_build(int cx, int cz, MeshVertex *out)
 {
-    int x, y, z, f, n = 0;
+    int x, y, z, f, k, n = 0;
 
     for (y = 0; y < WORLD_HEIGHT; y++)
         for (z = 0; z < CHUNK_SIZE; z++)
@@ -241,7 +277,11 @@ static int ref_build(int cx, int cz, MeshVertex *out)
                     continue;
                 for (f = 0; f < FACE_COUNT; f++)
                     if (!ref_solid(wx + k_step[f][0], y + k_step[f][1], wz + k_step[f][2])) {
-                        mesh_face(out + n, (float)wx, (float)y, (float)wz, f, block_face_tile(b, f));
+                        unsigned char ao[4];
+
+                        for (k = 0; k < 4; k++)
+                            ao[k] = (unsigned char)test_ref_ao(world_solid, NULL, wx, y, wz, f, k);
+                        mesh_face_ao(out + n, (float)wx, (float)y, (float)wz, f, block_face_tile(b, f), ao);
                         n += MESH_FACE_VERTS;
                     }
             }
@@ -255,7 +295,7 @@ static int min_int(int a, int b)
 
 static void test_meshes(uint32_t seed)
 {
-    static const Chunk *const k_none[NB_COUNT] = { NULL, NULL, NULL, NULL };
+    static const Chunk *const k_none[NB_COUNT] = { NULL };
     int cx, cz, x, z, wrong = 0, with_nb = 0, alone = 0, seam = 0;
 
     for (cz = SMALL_MIN; cz < SMALL_MIN + SMALL_CHUNKS; cz++)
