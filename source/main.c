@@ -5,6 +5,7 @@
 #include "camera.h"
 #include "chunk.h"
 #include "chunk_mesh.h"
+#include "fps.h"
 #include "framebuffer.h"
 #include "gpu.h"
 #include "hotbar.h"
@@ -17,7 +18,7 @@
 #include "walk.h"
 #include "world.h"
 
-/* Roadmap row 1-10: the hotbar. The player stands in the middle of the
+/* Roadmap row 1-11: 30 frames a second. The player stands in the middle of the
  * small world (4 x 4 chunks of gentle hills from a fixed seed, one mesh per
  * chunk) facing north. The Circle Pad walks, by where the camera faces;
  * gravity holds the player on the ground, blocks stop them, and walking into
@@ -28,7 +29,10 @@
  * chosen block against the face looked at, never inside the player. The
  * meshes of the chunks a change touches are rebuilt. The bottom screen is
  * grass green with nine block slots along its foot (grass, dirt, stone,
- * then empty); tapping a slot chooses it. START quits. */
+ * then empty); tapping a slot chooses it. The game shows a new picture
+ * every second screen refresh, 30 a second, and a counter in the bottom
+ * screen's top-left corner shows the frames a second (its settings switch
+ * comes in roadmap 0.7). START quits. */
 
 #define PI 3.14159265f
 #define WORLD_SEED 2026u /* typed and random seeds come later (kickoff W-10) */
@@ -162,16 +166,18 @@ static void draw_crosshair(void)
     GSPGPU_FlushDataCache(fb, size);
 }
 
-/* The bottom screen: grass green with the hotbar along its foot. Its
- * picture stands on its side like the top screen's (gfxGetFramebuffer()
- * calls it 240 wide and 320 tall), so the sizes are passed swapped. */
-static void draw_bottom(const Hotbar *hb)
+/* The bottom screen: grass green with the hotbar along its foot and the
+ * frame counter in the top-left corner. Its picture stands on its side like
+ * the top screen's (gfxGetFramebuffer() calls it 240 wide and 320 tall), so
+ * the sizes are passed swapped. */
+static void draw_bottom(const Hotbar *hb, int fps_shown)
 {
     u16 fw = 0, fh = 0;
     u8 *fb = gfxGetFramebuffer(GFX_BOTTOM, GFX_LEFT, &fw, &fh);
 
     fb_fill_bgr8(fb, fw * fh, 80, 150, 60);
     hotbar_draw_bgr8(fb, fh, fw, hb, s_atlas);
+    fps_draw_bgr8(fb, fh, fw, fps_shown);
 }
 
 /* Walking speed from the Circle Pad, by where the camera faces. */
@@ -203,8 +209,9 @@ int main(void)
     Camera cam = { 0.0f, 0.0f, 0.0f, 0.0f, -10.0f * PI / 180.0f };
     Player player;
     Hotbar hotbar;
+    FpsCounter fps;
     Mat4 proj;
-    u64 last;
+    u64 last, paced;
 
     gfxInitDefault();
     world_generate(&s_world, WORLD_SEED);
@@ -220,6 +227,8 @@ int main(void)
     mat4_persp_tilt(&proj, 60.0f * PI / 180.0f, 400.0f / 240.0f, 0.1f, 160.0f);
 
     last = osGetTime();
+    paced = svcGetSystemTick();
+    fps_init(&fps, paced);
     while (aptMainLoop()) {
         LookInput in;
         Mat4 view, mvp;
@@ -258,7 +267,7 @@ int main(void)
         if ((hidKeysDown() & KEY_L) && !place_looked_at(&cam, &player, hotbar_block(&hotbar)))
             break;
 
-        draw_bottom(&hotbar);
+        draw_bottom(&hotbar, fps.shown);
         gfxFlushBuffers();
 
         camera_view(&view, &cam);
@@ -270,8 +279,14 @@ int main(void)
         gpu_frame_end();
         draw_crosshair();
 
+        /* Hand the picture over, then wait for screen refreshes until the
+         * second one since the last frame's wait: 30 frames a second. */
         gfxSwapBuffers();
-        gspWaitForVBlank();
+        do
+            gspWaitForVBlank();
+        while (!fps_pace_done(paced, svcGetSystemTick()));
+        paced = svcGetSystemTick();
+        fps_frame(&fps, paced);
     }
 
     free_meshes();

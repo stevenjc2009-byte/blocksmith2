@@ -50,5 +50,7 @@ void test_raycast(void);
 void test_break(void);
 void test_place(void);
 void test_hotbar(void);
+void test_font(void);
+void test_fps(void);
 
 #endif
