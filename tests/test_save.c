@@ -6,6 +6,7 @@
 
 #include "block.h"
 #include "save.h"
+#include "sky.h"
 #include "stream.h"
 #include "terrain.h"
 #include "test.h"
@@ -124,13 +125,15 @@ static void sample_info(SaveInfo *info)
     for (k = 0; k < HOTBAR_SLOTS; k++)
         info->hotbar[k] = (uint8_t)(k % BLOCK_COUNT);
     info->chosen = 8;
+    info->daytime = 0.6875f;
 }
 
 static int info_equal(const SaveInfo *a, const SaveInfo *b)
 {
     return a->seed == b->seed && a->x == b->x && a->y == b->y && a->z == b->z &&
            a->yaw == b->yaw && a->pitch == b->pitch &&
-           memcmp(a->hotbar, b->hotbar, HOTBAR_SLOTS) == 0 && a->chosen == b->chosen;
+           memcmp(a->hotbar, b->hotbar, HOTBAR_SLOTS) == 0 && a->chosen == b->chosen &&
+           a->daytime == b->daytime;
 }
 
 static void test_info(void)
@@ -140,51 +143,91 @@ static void test_info(void)
     float nan = NAN, inf = INFINITY;
     size_t i;
     int flips_caught = 0;
+    const float times[4] = { NAN, -0.01f, 1.0f, 7.5f };
 
     sample_info(&in);
     save_info_pack(&in, buf);
     CHECK_EQ_INT(memcmp(buf, "BS2W", 4), 0);
-    CHECK_EQ_INT(save_info_unpack(buf, &out), 1);
+    CHECK_EQ_INT(save_info_unpack(buf, sizeof buf, &out), 1);
     CHECK_EQ_INT(info_equal(&in, &out), 1);
     /* Every single bit flipped is caught. */
     for (i = 0; i < SAVE_INFO_SIZE * 8; i++) {
         memcpy(bad, buf, sizeof bad);
         bad[i / 8] ^= (uint8_t)(1u << (i % 8));
-        flips_caught += !save_info_unpack(bad, &out);
+        flips_caught += !save_info_unpack(bad, sizeof bad, &out);
     }
     CHECK_EQ_INT(flips_caught, SAVE_INFO_SIZE * 8);
     /* With a good CRC: resealing alone still reads... */
     memcpy(bad, buf, sizeof bad);
     reseal(bad, sizeof bad);
-    CHECK_EQ_INT(save_info_unpack(bad, &out), 1);
+    CHECK_EQ_INT(save_info_unpack(bad, sizeof bad, &out), 1);
     /* ...but another version, a chosen slot past the last, a slot with no
      * such block, or a number that is not finite does not. */
-    memcpy(bad, buf, sizeof bad);
-    bad[4] = 2;
-    reseal(bad, sizeof bad);
-    CHECK_EQ_INT(save_info_unpack(bad, &out), 0);
+    for (i = 1; i <= 3; i += 2) { /* version 1 at version 2's size, and 3 */
+        memcpy(bad, buf, sizeof bad);
+        bad[4] = (uint8_t)i;
+        reseal(bad, sizeof bad);
+        CHECK_EQ_INT(save_info_unpack(bad, sizeof bad, &out), 0);
+    }
     memcpy(bad, buf, sizeof bad);
     bad[3] = 'S'; /* another file's mark, "BS2S" */
     reseal(bad, sizeof bad);
-    CHECK_EQ_INT(save_info_unpack(bad, &out), 0);
+    CHECK_EQ_INT(save_info_unpack(bad, sizeof bad, &out), 0);
     memcpy(bad, buf, sizeof bad);
     bad[32 + HOTBAR_SLOTS] = HOTBAR_SLOTS;
     reseal(bad, sizeof bad);
-    CHECK_EQ_INT(save_info_unpack(bad, &out), 0);
+    CHECK_EQ_INT(save_info_unpack(bad, sizeof bad, &out), 0);
     memcpy(bad, buf, sizeof bad);
     bad[32 + 4] = BLOCK_COUNT;
     reseal(bad, sizeof bad);
-    CHECK_EQ_INT(save_info_unpack(bad, &out), 0);
+    CHECK_EQ_INT(save_info_unpack(bad, sizeof bad, &out), 0);
     for (i = 0; i < 5; i++) {
         memcpy(bad, buf, sizeof bad);
         memcpy(bad + 12 + 4 * i, i % 2 ? &inf : &nan, 4);
         reseal(bad, sizeof bad);
-        CHECK_EQ_INT(save_info_unpack(bad, &out), 0);
+        CHECK_EQ_INT(save_info_unpack(bad, sizeof bad, &out), 0);
+    }
+    /* The time of day: 0 (sunrise) reads; not a number, below 0, or 1 and
+     * up does not. */
+    memcpy(bad, buf, sizeof bad);
+    memset(bad + 33 + HOTBAR_SLOTS, 0, 4);
+    reseal(bad, sizeof bad);
+    CHECK_EQ_INT(save_info_unpack(bad, sizeof bad, &out) && out.daytime == 0.0f, 1);
+    for (i = 0; i < 4; i++) {
+        memcpy(bad, buf, sizeof bad);
+        memcpy(bad + 33 + HOTBAR_SLOTS, &times[i], 4);
+        reseal(bad, sizeof bad);
+        CHECK_EQ_INT(save_info_unpack(bad, sizeof bad, &out), 0);
     }
     /* A failed read leaves *info as it was. */
     memset(&out, 0, sizeof out);
-    CHECK_EQ_INT(save_info_unpack(bad, &out), 0);
+    CHECK_EQ_INT(save_info_unpack(bad, sizeof bad, &out), 0);
     CHECK_EQ_INT(out.seed == 0 && out.chosen == 0, 1);
+}
+
+/* A world.dat saved before row 3-02: version 1, SAVE_INFO_SIZE_V1 bytes,
+ * no time of day. It reads, at a new world's time of day; version 2 at its
+ * size, a size between, a version 2 file cut short and nothing do not. */
+static void test_info_v1(void)
+{
+    SaveInfo in, out;
+    uint8_t buf[SAVE_INFO_SIZE], old[SAVE_INFO_SIZE_V1];
+
+    sample_info(&in);
+    save_info_pack(&in, buf);
+    memcpy(old, buf, SAVE_INFO_SIZE_V1 - 4); /* all but the time of day and CRC */
+    old[4] = 1;
+    reseal(old, sizeof old);
+    CHECK_EQ_INT(save_info_unpack(old, sizeof old, &out), 1);
+    CHECK_NEAR(out.daytime, SKY_NEW_WORLD, 0.0);
+    in.daytime = SKY_NEW_WORLD;
+    CHECK_EQ_INT(info_equal(&in, &out), 1);
+    old[4] = 2;
+    reseal(old, sizeof old);
+    CHECK_EQ_INT(save_info_unpack(old, sizeof old, &out), 0);
+    CHECK_EQ_INT(save_info_unpack(buf, SAVE_INFO_SIZE_V1 + 1, &out), 0);
+    CHECK_EQ_INT(save_info_unpack(buf, SAVE_INFO_SIZE_V1, &out), 0);
+    CHECK_EQ_INT(save_info_unpack(buf, 0, &out), 0);
 }
 
 static void test_settings_pack(void)
@@ -336,6 +379,7 @@ void test_save(void)
     test_crc();
     test_rle();
     test_info();
+    test_info_v1();
     test_settings_pack();
     test_names();
     test_set();

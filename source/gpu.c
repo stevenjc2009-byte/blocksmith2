@@ -10,7 +10,8 @@
 
 #define CMD_WORDS 0x4000 /* 64 KB command buffer */
 
-/* Clear colour, 0xRRGGBBAA: the same sky blue as row 1-01. */
+/* The clear colour until gpu_set_clear(), 0xRRGGBBAA: the same sky blue as
+ * row 1-01. */
 #define CLEAR_RGBA 0x6EAAF0FF
 /* Depth clear: 0 is as far away as the depth buffer goes. */
 #define CLEAR_DEPTH 0
@@ -19,6 +20,8 @@ static DVLB_s *s_dvlb;
 static shaderProgram_s s_prog;
 static bool s_prog_ready;
 static s8 s_mvp_reg;
+static s8 s_light_reg;
+static u32 s_clear = CLEAR_RGBA; /* gpu_set_clear() */
 static u32 *s_color_buf; /* VRAM bank A, RGBA8, GPU_TOP_W x GPU_TOP_H */
 static u32 *s_depth_buf; /* VRAM bank B, depth 24 + stencil 8 */
 static u32 *s_cmd_buf;   /* linear memory */
@@ -57,7 +60,8 @@ bool gpu_init(void)
     s_prog_ready = true;
     shaderProgramSetVsh(&s_prog, &s_dvlb->DVLE[0]);
     s_mvp_reg = shaderInstanceGetUniformLocation(s_prog.vertexShader, "mvp");
-    return s_mvp_reg >= 0;
+    s_light_reg = shaderInstanceGetUniformLocation(s_prog.vertexShader, "light");
+    return s_mvp_reg >= 0 && s_light_reg >= 0;
 }
 
 void gpu_frame_begin(void)
@@ -69,6 +73,7 @@ void gpu_frame_begin(void)
     gpu_state_fragment_ops();
     gpu_state_texture(s_tex, BLOCKTEX_SIZE, BLOCKTEX_SIZE);
     gpu_state_texenv();
+    gpu_set_light(1.0f);
 }
 
 void gpu_draw(const MeshVertex *verts, int count, const Mat4 *mvp)
@@ -78,6 +83,23 @@ void gpu_draw(const MeshVertex *verts, int count, const Mat4 *mvp)
     gpu_state_vertex_input(verts, sizeof *verts);
     gpu_state_uniform(s_mvp_reg, mvp);
     gpu_state_draw_triangles(count);
+}
+
+void gpu_draw_sky(const MeshVertex *verts, int count, const Mat4 *mvp)
+{
+    gpu_state_depth_write(false);
+    gpu_draw(verts, count, mvp);
+    gpu_state_depth_write(true);
+}
+
+void gpu_set_clear(uint32_t rgba)
+{
+    s_clear = rgba;
+}
+
+void gpu_set_light(float light)
+{
+    gpu_state_uniform_vec4(s_light_reg, light, light, light, 1.0f);
 }
 
 void gpu_frame_end(void)
@@ -91,7 +113,7 @@ void gpu_frame_end(void)
 
     /* Clear colour, then depth: one fill at a time on the first filler.
      * Filling both at once and waiting on PSC1 hung in Azahar (row 1-03). */
-    GX_MemoryFill(s_color_buf, CLEAR_RGBA, s_color_buf + GPU_TOP_W * GPU_TOP_H,
+    GX_MemoryFill(s_color_buf, s_clear, s_color_buf + GPU_TOP_W * GPU_TOP_H,
                   GX_FILL_TRIGGER | GX_FILL_32BIT_DEPTH, NULL, 0, NULL, 0);
     gspWaitForPSC0();
     GX_MemoryFill(s_depth_buf, CLEAR_DEPTH, s_depth_buf + GPU_TOP_W * GPU_TOP_H,

@@ -3,9 +3,10 @@
 
 #include <stdint.h>
 
-/* The block textures, drawn in code (kickoff F-4): one 64 x 64 picture
- * holding a 4 x 4 grid of 16 x 16 tiles. Tile i sits in column i % 4 and
- * row i / 4, counting rows from the top. */
+/* The block textures and the sun and moon (row 3-02), drawn in code
+ * (kickoff F-4): one 64 x 64 picture holding a 4 x 4 grid of 16 x 16
+ * tiles. Tile i sits in column i % 4 and row i / 4, counting rows from the
+ * top. */
 #define BLOCKTEX_SIZE 64
 #define BLOCKTEX_TILE 16
 #define BLOCKTEX_PER_ROW (BLOCKTEX_SIZE / BLOCKTEX_TILE)
@@ -19,6 +20,8 @@ enum {
     TILE_GRASS_SIDE,
     TILE_DIRT,
     TILE_STONE,
+    TILE_SUN, /* the sun and moon in the sky (sky.h) */
+    TILE_MOON,
     TILE_COUNT
 };
 

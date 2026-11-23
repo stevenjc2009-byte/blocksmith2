@@ -76,6 +76,47 @@ static uint32_t grass_side_texel(int x, int y)
     return y < depth ? grass_texel(x, y) : dirt_texel(x, y + 7);
 }
 
+/* How far a texel is from the tile's nearest edge: 0 .. 7. */
+static int edge_distance(int x, int y)
+{
+    int a = x < BLOCKTEX_TILE - 1 - x ? x : BLOCKTEX_TILE - 1 - x;
+    int b = y < BLOCKTEX_TILE - 1 - y ? y : BLOCKTEX_TILE - 1 - y;
+
+    return a < b ? a : b;
+}
+
+/* The sun: a pale yellow-white middle in a warmer ring and a gold rim. */
+static uint32_t sun_texel(int x, int y)
+{
+    int e = edge_distance(x, y);
+    int d = wobble(hash3((uint32_t)x, (uint32_t)y, 6), 5);
+
+    if (e < 2)
+        return rgb(255, 214 + d, 90 + d);
+    if (e < 5)
+        return rgb(255, 240 + d, 170 + d);
+    return rgb(255, 250 + d, 222 + d);
+}
+
+/* The moon: pale blue-grey with four darker craters (middle x, y and the
+ * square of the radius), each with a lighter rim. */
+static uint32_t moon_texel(int x, int y)
+{
+    static const int k_craters[4][3] = { { 5, 5, 5 }, { 11, 9, 6 }, { 5, 12, 2 }, { 12, 3, 1 } };
+    int d = wobble(hash3((uint32_t)x, (uint32_t)y, 7), 4);
+    int i, rim = 0;
+
+    for (i = 0; i < 4; i++) {
+        int dx = x - k_craters[i][0], dy = y - k_craters[i][1];
+
+        if (dx * dx + dy * dy <= k_craters[i][2])
+            return rgb(160 + d, 168 + d, 184 + d);
+        if (dx * dx + dy * dy <= k_craters[i][2] + 3)
+            rim = 1;
+    }
+    return rim ? rgb(194 + d, 200 + d, 212 + d) : rgb(214 + d, 220 + d, 232 + d);
+}
+
 /* A loud check for tiles nothing uses yet. */
 static uint32_t missing_texel(int x, int y)
 {
@@ -89,6 +130,8 @@ static uint32_t tile_texel(int tile, int x, int y)
     case TILE_GRASS_SIDE: return grass_side_texel(x, y);
     case TILE_DIRT:       return dirt_texel(x, y);
     case TILE_STONE:      return stone_texel(x, y);
+    case TILE_SUN:        return sun_texel(x, y);
+    case TILE_MOON:       return moon_texel(x, y);
     default:              return missing_texel(x, y);
     }
 }

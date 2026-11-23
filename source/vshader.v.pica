@@ -1,7 +1,9 @@
-; Vertex shader: position through the mvp matrix, texture coordinates and
-; brightness passed straight on.
+; Vertex shader: position through the mvp matrix, texture coordinates passed
+; straight on, and brightness times the world's light (day and night, row
+; 3-02: 1 by day, less at night).
 
 .fvec mvp[4]
+.fvec light
 
 .constf ones(1.0, 1.0, 1.0, 1.0)
 
@@ -24,7 +26,7 @@
 
 	mov outtc0, intc0
 
-	mov r1.xyz, inclr
+	mul r1.xyz, light, inclr
 	mov r1.w, ones
 	mov outclr, r1
 

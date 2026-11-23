@@ -35,6 +35,13 @@ void gpu_state_viewport(void)
     GPUCMD_AddIncrementalWrites(GPUREG_SCISSORTEST_MODE, v, 3);
 }
 
+/* The depth register: test (nearer wins) and write, or neither. */
+static u32 depth_word(bool on)
+{
+    return on ? 1 | (GPU_GREATER << 4) | (GPU_WRITE_ALL << 8)
+              : 1 | (GPU_ALWAYS << 4) | (GPU_WRITE_COLOR << 8);
+}
+
 void gpu_state_fragment_ops(void)
 {
     u32 t[4];
@@ -52,7 +59,7 @@ void gpu_state_fragment_ops(void)
     t[0] = GPU_ALWAYS << 4; /* alpha test off */
     t[1] = GPU_ALWAYS << 4; /* stencil test off */
     t[2] = 0;               /* stencil ops: keep */
-    t[3] = 1 | (GPU_GREATER << 4) | (GPU_WRITE_ALL << 8); /* depth test on */
+    t[3] = depth_word(true);
     GPUCMD_AddIncrementalWrites(GPUREG_FRAGOP_ALPHA_TEST, t, 4);
 
     GPUCMD_AddWrite(GPUREG_BLEND_COLOR, 0);
@@ -142,6 +149,21 @@ void gpu_state_uniform(int reg, const Mat4 *m)
     mat4_uniform_words(m, words);
     GPUCMD_AddWrite(GPUREG_VSH_FLOATUNIFORM_CONFIG, 0x80000000 | (u32)reg);
     GPUCMD_AddWrites(GPUREG_VSH_FLOATUNIFORM_DATA, words, 16);
+}
+
+void gpu_state_uniform_vec4(int reg, float x, float y, float z, float w)
+{
+    const float v[4] = { w, z, y, x }; /* stored last to first, as mat4_uniform_words() */
+    u32 words[4];
+
+    memcpy(words, v, sizeof words);
+    GPUCMD_AddWrite(GPUREG_VSH_FLOATUNIFORM_CONFIG, 0x80000000 | (u32)reg);
+    GPUCMD_AddWrites(GPUREG_VSH_FLOATUNIFORM_DATA, words, 4);
+}
+
+void gpu_state_depth_write(bool on)
+{
+    GPUCMD_AddWrite(GPUREG_DEPTH_COLOR_MASK, depth_word(on));
 }
 
 void gpu_state_draw_triangles(int count)

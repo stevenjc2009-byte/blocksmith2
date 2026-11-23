@@ -147,7 +147,7 @@ int save_free_id(const char *root)
 
 static bool info_ok(const uint8_t *buf, long n, void *arg)
 {
-    return n == SAVE_INFO_SIZE && save_info_unpack(buf, arg);
+    return n >= 0 && save_info_unpack(buf, (size_t)n, arg);
 }
 
 static bool read_info(const char *dir, SaveInfo *info)

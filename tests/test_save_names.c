@@ -185,6 +185,7 @@ static void sample_info(SaveInfo *info, uint32_t seed)
     for (k = 0; k < HOTBAR_SLOTS; k++)
         info->hotbar[k] = (uint8_t)(k % BLOCK_COUNT);
     info->chosen = 0;
+    info->daytime = 0.5f;
 }
 
 /* World id made with a world.dat (seed id) and chunks chunk files. */

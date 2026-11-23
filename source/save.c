@@ -6,12 +6,14 @@
 #include <string.h>
 
 #include "block.h"
+#include "sky.h"
 #include "stream.h"
 
 /* The packing half of save.h: bytes in, bytes out, no files (those are in
  * save_files.c). */
 
-#define VERSION 1u
+#define VERSION 1u      /* every file but world.dat */
+#define INFO_VERSION 2u /* world.dat, with the time of day (row 3-02) */
 #define SET_CAP_MAX (1 << 24) /* the chunk set's most places: 8 million saved chunks */
 
 /* --- Packing --- */
@@ -63,17 +65,27 @@ static float get_float(const uint8_t *p)
 
 /* Mark and version at the front, CRC of the rest at the end (size bytes in
  * all). */
-static void seal(uint8_t *p, size_t size, const char *mark)
+static void seal_as(uint8_t *p, size_t size, const char *mark, uint32_t version)
 {
     memcpy(p, mark, 4);
-    put32(p + 4, VERSION);
+    put32(p + 4, version);
     put32(p + size - 4, save_crc32(p, size - 4));
+}
+
+static bool sealed_as(const uint8_t *p, size_t size, const char *mark, uint32_t version)
+{
+    return memcmp(p, mark, 4) == 0 && get32(p + 4) == version &&
+           get32(p + size - 4) == save_crc32(p, size - 4);
+}
+
+static void seal(uint8_t *p, size_t size, const char *mark)
+{
+    seal_as(p, size, mark, VERSION);
 }
 
 static bool sealed(const uint8_t *p, size_t size, const char *mark)
 {
-    return memcmp(p, mark, 4) == 0 && get32(p + 4) == VERSION &&
-           get32(p + size - 4) == save_crc32(p, size - 4);
+    return sealed_as(p, size, mark, VERSION);
 }
 
 size_t save_rle_pack(const Chunk *c, uint8_t *out)
@@ -121,15 +133,17 @@ void save_info_pack(const SaveInfo *info, uint8_t out[SAVE_INFO_SIZE])
     put_float(out + 28, info->pitch);
     memcpy(out + 32, info->hotbar, HOTBAR_SLOTS);
     out[32 + HOTBAR_SLOTS] = info->chosen;
-    seal(out, SAVE_INFO_SIZE, "BS2W");
+    put_float(out + 33 + HOTBAR_SLOTS, info->daytime);
+    seal_as(out, SAVE_INFO_SIZE, "BS2W", INFO_VERSION);
 }
 
-bool save_info_unpack(const uint8_t in[SAVE_INFO_SIZE], SaveInfo *info)
+bool save_info_unpack(const uint8_t *in, size_t n, SaveInfo *info)
 {
     SaveInfo t;
     int k;
 
-    if (!sealed(in, SAVE_INFO_SIZE, "BS2W"))
+    if (!(n == SAVE_INFO_SIZE && sealed_as(in, n, "BS2W", INFO_VERSION)) &&
+        !(n == SAVE_INFO_SIZE_V1 && sealed_as(in, n, "BS2W", 1u)))
         return false;
     t.seed = get32(in + 8);
     t.x = get_float(in + 12);
@@ -139,8 +153,10 @@ bool save_info_unpack(const uint8_t in[SAVE_INFO_SIZE], SaveInfo *info)
     t.pitch = get_float(in + 28);
     memcpy(t.hotbar, in + 32, HOTBAR_SLOTS);
     t.chosen = in[32 + HOTBAR_SLOTS];
+    t.daytime = n == SAVE_INFO_SIZE ? get_float(in + 33 + HOTBAR_SLOTS) : SKY_NEW_WORLD;
     if (!isfinite(t.x) || !isfinite(t.y) || !isfinite(t.z) || !isfinite(t.yaw) ||
-        !isfinite(t.pitch) || t.chosen >= HOTBAR_SLOTS)
+        !isfinite(t.pitch) || t.chosen >= HOTBAR_SLOTS ||
+        !(t.daytime >= 0.0f && t.daytime < 1.0f))
         return false;
     for (k = 0; k < HOTBAR_SLOTS; k++)
         if (t.hotbar[k] >= BLOCK_COUNT)

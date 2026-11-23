@@ -37,7 +37,7 @@ static bool whole(const uint8_t *buf, long n, void *arg)
     int cx, cz;
 
     if (strcmp(name, "world.dat") == 0)
-        return n == SAVE_INFO_SIZE && save_info_unpack(buf, &info);
+        return n >= 0 && save_info_unpack(buf, (size_t)n, &info);
     if (strcmp(name, "name.dat") == 0)
         return n == SAVE_NAME_SIZE && save_name_unpack(buf, word);
     return save_chunk_name_parse(name, &cx, &cz) && n >= SAVE_CHUNK_HEAD + 4 &&

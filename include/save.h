@@ -17,7 +17,7 @@
  * Everything lives under one root folder (SAVE_ROOT on the SD card):
  *   settings.dat               the view distance and the world played last
  *   worlds/<n>/world.dat       world n's seed, where the player stands and
- *                              looks, and the hotbar
+ *                              looks, the hotbar and the time of day
  *   worlds/<n>/name.dat        world n's name, if it was given one
  *   worlds/<n>/x<cx>z<cz>.chk  chunk (cx, cz) of world n, as it was changed
  *   backups/<n>/               world n's backup (row 2-07): its world.dat,
@@ -46,7 +46,8 @@
  * At worst every block differs from the one before: 2 bytes each. */
 #define SAVE_RLE_MAX (2 * SAVE_CHUNK_BLOCKS)
 
-#define SAVE_INFO_SIZE 46     /* world.dat */
+#define SAVE_INFO_SIZE 50     /* world.dat (version 2, row 3-02) */
+#define SAVE_INFO_SIZE_V1 46  /* world.dat saved before row 3-02 */
 #define SAVE_SETTINGS_SIZE 17 /* settings.dat */
 #define SAVE_NAME_SIZE 28     /* name.dat */
 #define SAVE_CHUNK_HEAD 20    /* a chunk file before its runs */
@@ -59,6 +60,7 @@ typedef struct {
     float yaw, pitch;             /* where the camera looks (camera.h) */
     uint8_t hotbar[HOTBAR_SLOTS]; /* each slot's block */
     uint8_t chosen;               /* the chosen slot */
+    float daytime;                /* the time of day, 0 .. 1 (sky.h) */
 } SaveInfo;
 
 /* What settings.dat holds. */
@@ -99,9 +101,12 @@ size_t save_rle_pack(const Chunk *c, uint8_t *out);
 bool save_rle_unpack(const uint8_t *in, size_t n, Chunk *c);
 
 void save_info_pack(const SaveInfo *info, uint8_t out[SAVE_INFO_SIZE]);
-/* False if the mark, version or CRC is wrong, a number is not finite, the
- * chosen slot is past the last, or a slot holds no BLOCK_*. */
-bool save_info_unpack(const uint8_t in[SAVE_INFO_SIZE], SaveInfo *info);
+/* Read world.dat's n bytes: version 2 (SAVE_INFO_SIZE bytes), or version 1
+ * (SAVE_INFO_SIZE_V1, saved before row 3-02 with no time of day, which
+ * reads as SKY_NEW_WORLD). False if the size, mark, version or CRC is
+ * wrong, a number is not finite, the time of day is not from 0 up to 1,
+ * the chosen slot is past the last, or a slot holds no BLOCK_*. */
+bool save_info_unpack(const uint8_t *in, size_t n, SaveInfo *info);
 
 void save_settings_pack(const SaveSettings *s, uint8_t out[SAVE_SETTINGS_SIZE]);
 /* False if the mark, version or CRC is wrong, the view distance is out of

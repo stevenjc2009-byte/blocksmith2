@@ -2,6 +2,7 @@
 #define GPU_H
 
 #include <stdbool.h>
+#include <stdint.h>
 
 #include "mat4.h"
 #include "mesh.h"
@@ -25,8 +26,22 @@ void gpu_frame_begin(void);
  * flushed, and must stay put until gpu_frame_end() returns. */
 void gpu_draw(const MeshVertex *verts, int count, const Mat4 *mvp);
 
-/* Clear to sky blue, run the frame's commands and copy the picture into
- * the top screen's current framebuffer. Call before gfxSwapBuffers(). */
+/* Like gpu_draw(), but behind everything: no depth test and no depth
+ * written, so whatever is drawn after it covers it. */
+void gpu_draw_sky(const MeshVertex *verts, int count, const Mat4 *mvp);
+
+/* The colour gpu_frame_end() clears to, 0xRRGGBBAA: sky blue until it is
+ * changed (the start screens), the sky's colour of the moment in the game
+ * (skydraw.h). */
+void gpu_set_clear(uint32_t rgba);
+
+/* The light the draws after it are lit by: 1 full, less darker (day and
+ * night, row 3-02). gpu_frame_begin() sets it back to 1. */
+void gpu_set_light(float light);
+
+/* Clear to the colour from gpu_set_clear(), run the frame's commands and
+ * copy the picture into the top screen's current framebuffer. Call before
+ * gfxSwapBuffers(). */
 void gpu_frame_end(void);
 
 void gpu_exit(void);

@@ -116,13 +116,15 @@ static void sample_info(SaveInfo *info)
     for (k = 0; k < HOTBAR_SLOTS; k++)
         info->hotbar[k] = (uint8_t)(k % BLOCK_COUNT);
     info->chosen = 8;
+    info->daytime = 0.3125f;
 }
 
 static int info_equal(const SaveInfo *a, const SaveInfo *b)
 {
     return a->seed == b->seed && a->x == b->x && a->y == b->y && a->z == b->z &&
            a->yaw == b->yaw && a->pitch == b->pitch &&
-           memcmp(a->hotbar, b->hotbar, HOTBAR_SLOTS) == 0 && a->chosen == b->chosen;
+           memcmp(a->hotbar, b->hotbar, HOTBAR_SLOTS) == 0 && a->chosen == b->chosen &&
+           a->daytime == b->daytime;
 }
 
 static void chunk_path(char *out, int id, int cx, int cz)

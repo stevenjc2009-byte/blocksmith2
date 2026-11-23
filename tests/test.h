@@ -84,6 +84,7 @@ void test_worldlist_draw(void); /* test_worldlist_draw.c, called by test_worldli
 void test_lidsave(void);
 void test_save_backup(void);
 void test_ao(void);
+void test_sky(void);
 
 /* Row 3-01's reference corner shadow (test_ao.c): the level (0 to
  * MESH_AO_OPEN) of corner `corner` of face `face` of the block at (bx, by,

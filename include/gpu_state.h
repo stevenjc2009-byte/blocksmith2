@@ -37,6 +37,13 @@ void gpu_state_vertex_input(const void *verts, unsigned stride);
 /* Load a 4x4 matrix into the float uniform at register `reg`. */
 void gpu_state_uniform(int reg, const Mat4 *m);
 
+/* Load (x, y, z, w) into the float uniform at register `reg`. */
+void gpu_state_uniform_vec4(int reg, float x, float y, float z, float w);
+
+/* The depth test and depth writes on (the world: nearer wins), or both off
+ * (the sky: drawn first, behind everything). */
+void gpu_state_depth_write(bool on);
+
 /* Draw `count` vertices as separate triangles. */
 void gpu_state_draw_triangles(int count);
 

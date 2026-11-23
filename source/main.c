@@ -21,12 +21,15 @@
 #include "save.h"
 #include "saveui.h"
 #include "settings.h"
+#include "sky.h"
+#include "skydraw.h"
 #include "start.h"
 #include "walk.h"
 #include "world.h"
 
-/* Roadmap row 2-06: the endless world, a settings screen, a seed for each
- * new world, saving, and a list of the saved worlds. With worlds saved the
+/* Roadmap row 3-02: the endless world, a settings screen, a seed for each
+ * new world, saving, a list of the saved worlds, and day and night. With
+ * worlds saved the
  * game starts on the world list (worldlist.h), over the sky blue top
  * screen, the world played last chosen: A (or OPEN) opens the chosen world
  * (its changed chunks, where the player stood and looked, the hotbar), Y
@@ -65,9 +68,13 @@
  * game shows a new picture every second screen refresh, 30 a second, and a
  * counter in the bottom screen's top-left corner shows the frames a second
  * (its settings switch comes in roadmap 0.7). START saves and quits; on the
- * start screens it just quits. The chunk meshes are in meshes.c, the start
- * screens' loop in start.c, frame pacing and the crosshair in frame.c, the
- * Circle Pad and look keys read in controls.c. */
+ * start screens it just quits. A day and night takes 20 minutes (sky.h):
+ * the sun rises in the east and sets in the west, the sky glows orange
+ * round both, the moon crosses the night sky and the world grows dim; the
+ * time of day is saved with the world. The chunk meshes are in meshes.c,
+ * the start screens' loop in start.c, frame pacing and the crosshair in
+ * frame.c, the Circle Pad and look keys read in controls.c, the sky drawn
+ * in skydraw.c. */
 
 #define PI 3.14159265f
 
@@ -80,6 +87,7 @@ static SaveSettings s_kept; /* settings.dat, as read or last written */
 static SaveUiMessage s_msg; /* the save message, shown until s_msg_until */
 static u64 s_msg_until;
 static LidSave s_lid; /* the lid closing or HOME saves the game */
+static float s_daytime = SKY_NEW_WORLD; /* the time of day (sky.h) */
 
 /* The block under the crosshair, if one is in reach. */
 static bool looked_at(const Camera *cam, RayHit *hit)
@@ -136,9 +144,9 @@ static void draw_bottom(const Hotbar *hb, int fps_shown)
 }
 
 /* Save the game: the world's changed chunks, then world.dat (seed, where
- * the player stands and looks, the hotbar), then settings.dat. True only if
- * all of it was written; false too when the world has no folder (the
- * settings are still written). */
+ * the player stands and looks, the hotbar, the time of day), then
+ * settings.dat. True only if all of it was written; false too when the
+ * world has no folder (the settings are still written). */
 static bool save_game(const Player *p, const Camera *cam, const Hotbar *hb)
 {
     SaveInfo info;
@@ -156,6 +164,7 @@ static bool save_game(const Player *p, const Camera *cam, const Hotbar *hb)
         for (k = 0; k < HOTBAR_SLOTS; k++)
             info.hotbar[k] = (uint8_t)hb->block[k];
         info.chosen = (uint8_t)hb->chosen;
+        info.daytime = s_daytime;
         ok = save_world_write(&s_save, &info) && ok;
     }
     s_kept.view = s_settings.view;
@@ -268,6 +277,7 @@ int main(void)
         for (k = 0; k < HOTBAR_SLOTS; k++)
             hotbar.block[k] = info.hotbar[k];
         hotbar.chosen = info.chosen;
+        s_daytime = info.daytime;
     } else {
         player_spawn(&player, &s_world, 0, 0);
         save_game(&player, &cam, &hotbar); /* so the new world can be carried on at once */
@@ -306,6 +316,7 @@ int main(void)
         last = now;
         if (dt > 0.1f)
             dt = 0.1f;
+        s_daytime = sky_advance(s_daytime, dt);
         if (s_settings.open) {
             /* The settings screen: the player stands still; a touch or the
              * D-pad moves the slider. */
@@ -370,6 +381,7 @@ int main(void)
         camera_view(&view, &cam);
         mat4_mul(&mvp, &proj, &view);
         gpu_frame_begin();
+        skydraw(s_daytime, &cam, &proj);
         meshes_draw(&mvp);
         gpu_frame_end();
         frame_crosshair();
@@ -380,6 +392,7 @@ int main(void)
     save_game(&player, &cam, &hotbar); /* START, or the system closing the game */
     save_world_close(&s_save);
     meshes_free();
+    skydraw_exit();
     gpu_exit();
     gfxExit();
     return 0;
