@@ -30,6 +30,11 @@ void gpu_draw(const MeshVertex *verts, int count, const Mat4 *mvp);
  * written, so whatever is drawn after it covers it. */
 void gpu_draw_sky(const MeshVertex *verts, int count, const Mat4 *mvp);
 
+/* Like gpu_draw(), but in front of everything drawn before it: no depth
+ * test and no depth written (the held block, row 3-05; its faces never
+ * cover each other, as it is a box and back faces are culled). */
+void gpu_draw_front(const MeshVertex *verts, int count, const Mat4 *mvp);
+
 /* The colour gpu_frame_end() clears to, 0xRRGGBBAA: sky blue until it is
  * changed (the start screens), the sky's colour of the moment in the game
  * (skydraw.h). */

@@ -88,6 +88,9 @@ void test_ao(void);
 void test_sky(void);
 void test_light(void);
 void test_cloud(void);
+void test_particles(void);
+void test_held(void);
+void test_light_world(void);
 
 /* Row 3-03's reference torch light (test_light.c): fills a table for chunk
  * c and its neighbours (nb as chunk_mesh.h, NULL entries air) from the rule

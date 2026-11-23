@@ -55,4 +55,11 @@ float light_brightness(int level);
  * no light can have changed. Some of those chunks may not be loaded. */
 bool light_touched_box(const World *w, int x, int y, int z, bool torch_edited, int box[4]);
 
+/* The level (0 to LIGHT_TORCH) of world cell (x, y, z) from the torches of
+ * the loaded chunks round it (row 3-05: the held block's and the break
+ * bits' light); 0 for a cell outside a loaded chunk or the world. It
+ * searches out from that cell for the nearest torch, stopping at the
+ * first, and leaves the last light_build()'s levels as they were. */
+int light_world_level(const World *w, int x, int y, int z);
+
 #endif

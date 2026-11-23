@@ -10,14 +10,13 @@
 #include "frame.h"
 #include "framebuffer.h"
 #include "gpu.h"
+#include "hand.h"
 #include "hotbar.h"
 #include "lidsave.h"
 #include "look.h"
 #include "mat4.h"
 #include "meshes.h"
-#include "place.h"
 #include "player.h"
-#include "raycast.h"
 #include "save.h"
 #include "saveui.h"
 #include "settings.h"
@@ -57,8 +56,10 @@
  * it (no jump button). A B X Y look around, and so does the C-stick on a
  * New 3DS (an Old 3DS has none). A crosshair marks the middle of the top
  * screen; R breaks the block under it, up to 5 blocks away, at once (timed
- * mining comes with tools, kickoff P-4), and L puts the chosen block against
- * the face looked at, never inside the player. The meshes of the chunks a
+ * mining comes with tools, kickoff P-4), throwing its bits, and L puts the
+ * chosen block against the face looked at, never inside the player; the
+ * chosen block shows in the bottom right and swings with R and L (hand.c,
+ * row 3-05). The meshes of the chunks a
  * change touches are rebuilt. The bottom screen is grass green with nine
  * block slots along its foot (grass, dirt, stone, then empty); tapping a
  * slot chooses it. SAVE in its top-right corner saves the world (saveui.h),
@@ -88,40 +89,6 @@ static SaveUiMessage s_msg; /* the save message, shown until s_msg_until */
 static u64 s_msg_until;
 static LidSave s_lid; /* the lid closing or HOME saves the game */
 static float s_daytime = SKY_NEW_WORLD; /* the time of day (sky.h) */
-
-/* The block under the crosshair, if one is in reach. */
-static bool looked_at(const Camera *cam, RayHit *hit)
-{
-    float f[3];
-
-    camera_forward(cam, f);
-    return raycast(&s_world, cam->x, cam->y, cam->z, f[0], f[1], f[2], RAY_REACH, hit);
-}
-
-/* R: break the block under the crosshair and rebuild the chunks it changes.
- * False only if a rebuild ran out of memory. */
-static bool break_looked_at(const Camera *cam)
-{
-    RayHit hit;
-
-    if (!looked_at(cam, &hit) || !world_break(&s_world, hit.x, hit.y, hit.z))
-        return true;
-    return meshes_rebuild_around(&s_world, hit.x, hit.y, hit.z);
-}
-
-/* L: put block b against the face under the crosshair (not inside the
- * player) and rebuild the chunks round the new block, which can be in the
- * next chunk over from the block looked at. False only if a rebuild ran out
- * of memory. */
-static bool place_looked_at(const Camera *cam, const Player *player, int b)
-{
-    RayHit hit;
-    int x, y, z;
-
-    if (!looked_at(cam, &hit) || !place_block(&s_world, player, &hit, b, &x, &y, &z))
-        return true;
-    return meshes_rebuild_around(&s_world, x, y, z);
-}
 
 /* The bottom screen: the settings screen while it is open, else grass green
  * with the hotbar along its foot, the SAVE button and the save message
@@ -315,6 +282,7 @@ int main(void)
         if (dt > 0.1f)
             dt = 0.1f;
         s_daytime = sky_advance(s_daytime, dt);
+        hand_step(&s_world, dt);
         if (s_settings.open) {
             /* The settings screen: the player stands still; a touch or the
              * D-pad moves the slider. */
@@ -343,7 +311,7 @@ int main(void)
                            block_to_chunk((int)floorf(player.z)), s_settings.view, 1))
             break; /* out of memory for a mesh */
         if (!s_settings.open) {
-            if ((hidKeysDown() & KEY_R) && !break_looked_at(&cam))
+            if ((hidKeysDown() & KEY_R) && !hand_break(&s_world, &cam))
                 break; /* out of memory for a mesh */
             if (hidKeysDown() & KEY_TOUCH) {
                 touchPosition touch;
@@ -357,7 +325,7 @@ int main(void)
                 }
             }
             if ((hidKeysDown() & KEY_L) &&
-                !place_looked_at(&cam, &player, hotbar_block(&hotbar)))
+                !hand_place(&s_world, &cam, &player, hotbar_block(&hotbar)))
                 break;
         }
         if (save_due(osGetTime(), saved_at)) {
@@ -381,6 +349,7 @@ int main(void)
         gpu_frame_begin();
         skydraw(s_daytime, &cam, &proj, &mvp, s_settings.view);
         meshes_draw(&mvp);
+        hand_draw(&s_world, &cam, &proj, &mvp, hotbar_block(&hotbar));
         gpu_frame_end();
         frame_crosshair();
         frame_end(&fps, &paced);
@@ -391,6 +360,7 @@ int main(void)
     save_world_close(&s_save);
     meshes_free();
     skydraw_exit();
+    hand_exit();
     gpu_exit();
     gfxExit();
     return 0;

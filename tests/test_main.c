@@ -43,6 +43,9 @@ int main(void)
     test_sky();
     test_light();
     test_cloud();
+    test_particles();
+    test_held();
+    test_light_world();
 
     printf("PC tests: %d checks, %d failed\n", g_checks, g_fails);
     if (g_checks == 0) {

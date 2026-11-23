@@ -97,6 +97,11 @@ void gpu_draw_sky(const MeshVertex *verts, int count, const Mat4 *mvp)
     gpu_state_depth_write(true);
 }
 
+void gpu_draw_front(const MeshVertex *verts, int count, const Mat4 *mvp)
+{
+    gpu_draw_sky(verts, count, mvp); /* the same state: no depth test or write */
+}
+
 void gpu_set_clear(uint32_t rgba)
 {
     s_clear = rgba;
