@@ -1,11 +1,14 @@
 ; Vertex shader: position through the mvp matrix, texture coordinates passed
-; straight on, and brightness times the world's light (day and night, row
-; 3-02: 1 by day, less at night).
+; straight on, and brightness times the light: the brighter of the world's
+; light (day and night, row 3-02: 1 by day, less at night) and the vertex's
+; torch light tinted warm (row 3-03), per channel. By day the world's light
+; is 1, so torches change nothing.
 
 .fvec mvp[4]
 .fvec light
 
 .constf ones(1.0, 1.0, 1.0, 1.0)
+.constf warm(1.0, 0.85, 0.6, 1.0)
 
 .out outpos position
 .out outtc0 texcoord0
@@ -14,6 +17,7 @@
 .alias inpos v0
 .alias intc0 v1
 .alias inclr v2
+.alias intorch v3
 
 .proc main
 	mov r0.xyz, inpos
@@ -26,7 +30,9 @@
 
 	mov outtc0, intc0
 
-	mul r1.xyz, light, inclr
+	mul r2, warm, intorch.xxxx
+	max r2, light, r2
+	mul r1.xyz, r2, inclr
 	mov r1.w, ones
 	mov outclr, r1
 

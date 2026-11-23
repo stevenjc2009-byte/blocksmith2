@@ -2,6 +2,7 @@
 
 #include "chunk_mesh.h"
 #include "gpu.h"
+#include "light.h"
 #include "mesh.h"
 #include "meshes.h"
 #include "stream.h"
@@ -73,8 +74,8 @@ bool meshes_stream(World *w, int pcx, int pcz, int view, int jobs)
     stream_put_away(w, pcx, pcz, view);
     for (j = 0; j < WORLD_SLOTS; j++)
         for (i = 0; i < WORLD_SLOTS; i++)
-            if (s_meshed[j][i] && !stream_keep_mesh(w, i, j, pcx, pcz, view))
-                free_mesh(i, j);
+            if ((s_meshed[j][i] || s_mesh[j][i]) && !stream_keep_mesh(w, i, j, pcx, pcz, view))
+                free_mesh(i, j); /* a stale mesh too (meshes_rebuild_around()) */
     while ((jobs == MESHES_ALL || jobs-- > 0) &&
            stream_next(w, s_meshed, pcx, pcz, view, &job)) {
         if (job.kind == STREAM_LOAD) {
@@ -87,16 +88,35 @@ bool meshes_stream(World *w, int pcx, int pcz, int view, int jobs)
     return true;
 }
 
-bool meshes_rebuild_around(const World *w, int x, int z)
+/* Is chunk (cx, cz) one of the n in touched? */
+static bool in_list(const int touched[WORLD_TOUCHED_MAX][2], int n, int cx, int cz)
 {
-    int touched[WORLD_TOUCHED_MAX][2];
-    int n, k;
+    int k;
 
+    for (k = 0; k < n; k++)
+        if (touched[k][0] == cx && touched[k][1] == cz)
+            return true;
+    return false;
+}
+
+bool meshes_rebuild_around(const World *w, int x, int y, int z)
+{
+    static unsigned s_torch_edits; /* w->torch_edits at the last call */
+    int touched[WORLD_TOUCHED_MAX][2], box[4];
+    int n, k, cx, cz;
+    bool torch = w->torch_edits != s_torch_edits;
+
+    s_torch_edits = w->torch_edits;
     n = world_touched_chunks(w, x, z, touched);
     for (k = 0; k < n; k++)
         if (s_meshed[world_slot(touched[k][1])][world_slot(touched[k][0])] &&
             !build_mesh(w, touched[k][0], touched[k][1]))
             return false;
+    if (light_touched_box(w, x, y, z, torch, box))
+        for (cz = box[1]; cz <= box[3]; cz++)
+            for (cx = box[0]; cx <= box[2]; cx++)
+                if (world_chunk(w, cx, cz) && !in_list(touched, n, cx, cz))
+                    s_meshed[world_slot(cz)][world_slot(cx)] = false; /* stale: kept, drawn */
     return true;
 }
 

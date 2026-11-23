@@ -106,7 +106,7 @@ static bool break_looked_at(const Camera *cam)
 
     if (!looked_at(cam, &hit) || !world_break(&s_world, hit.x, hit.y, hit.z))
         return true;
-    return meshes_rebuild_around(&s_world, hit.x, hit.z);
+    return meshes_rebuild_around(&s_world, hit.x, hit.y, hit.z);
 }
 
 /* L: put block b against the face under the crosshair (not inside the
@@ -120,7 +120,7 @@ static bool place_looked_at(const Camera *cam, const Player *player, int b)
 
     if (!looked_at(cam, &hit) || !place_block(&s_world, player, &hit, b, &x, &y, &z))
         return true;
-    return meshes_rebuild_around(&s_world, x, z);
+    return meshes_rebuild_around(&s_world, x, y, z);
 }
 
 /* The bottom screen: the settings screen while it is open, else grass green
@@ -208,7 +208,7 @@ int main(void)
     u32 stale;
     StartChoice start;
     bool cont = false, ok;
-    int k, world = 0, pcx = 0, pcz = 0;
+    int world = 0, pcx = 0, pcz = 0;
 
     gfxInitDefault();
     blocktex_build(s_atlas);
@@ -274,9 +274,7 @@ int main(void)
         cam.yaw = info.yaw;
         cam.pitch = info.pitch;
         camera_turn(&cam, 0.0f, 0.0f); /* keeps them in range */
-        for (k = 0; k < HOTBAR_SLOTS; k++)
-            hotbar.block[k] = info.hotbar[k];
-        hotbar.chosen = info.chosen;
+        hotbar_load(&hotbar, info.hotbar, info.chosen);
         s_daytime = info.daytime;
     } else {
         player_spawn(&player, &s_world, 0, 0);

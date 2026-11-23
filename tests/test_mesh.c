@@ -85,6 +85,80 @@ static void check_face(int face)
         printf("     (face %d)\n", face);
 }
 
+/* Row 3-03: each corner carries its torch light, and a torch is a thin
+ * stick (five faces round a 2/16 square, 10/16 tall) that glows fully. */
+static void test_torch_mesh(void)
+{
+    static const unsigned char ao[4] = { 3, 2, 1, 0 };
+    static const float lit[4] = { 0.1f, 0.3f, 0.6f, 0.9f };
+    static const int faces[MESH_TORCH_FACES] = { FACE_POS_X, FACE_NEG_X, FACE_POS_Y, FACE_POS_Z,
+                                                 FACE_NEG_Z };
+    const float h = MESH_TORCH_HALF, top_y = 4.0f + MESH_TORCH_HEIGHT;
+    MeshVertex v[MESH_BLOCK_VERTS];
+    float side[4], top[4];
+    int f, i, k, match, bad;
+
+    CHECK_EQ_INT((int)sizeof(MeshVertex), 36);
+    for (f = 0; f < FACE_COUNT; f++) {
+        mesh_face_lit(v, 3, 4, 5, f, TILE_STONE, ao, lit);
+        match = 0;
+        for (i = 0; i < MESH_FACE_VERTS; i++)
+            for (k = 0; k < 4; k++) {
+                const signed char *q = mesh_face_corner(f, k);
+
+                if (fabsf(v[i].x - (3 + q[0])) < TOL && fabsf(v[i].y - (4 + q[1])) < TOL &&
+                    fabsf(v[i].z - (5 + q[2])) < TOL) {
+                    CHECK_NEAR(v[i].t, lit[k], TOL);
+                    CHECK_NEAR(v[i].r, mesh_face_shade(f) * mesh_ao_scale(ao[k]), TOL);
+                    match++;
+                }
+            }
+        CHECK_EQ_INT(match, MESH_FACE_VERTS);
+        mesh_face_ao(v, 3, 4, 5, f, TILE_STONE, ao);
+        for (i = 0, bad = 0; i < MESH_FACE_VERTS; i++)
+            bad += v[i].t != 0.0f;
+        mesh_face(v, 3, 4, 5, f, TILE_STONE);
+        for (i = 0; i < MESH_FACE_VERTS; i++)
+            bad += v[i].t != 0.0f;
+        CHECK_EQ_INT(bad, 0);
+    }
+
+    CHECK_EQ_INT(MESH_TORCH_VERTS, 30);
+    CHECK_EQ_INT(mesh_block(v, 3, 4, 5, BLOCK_TORCH), MESH_TORCH_VERTS);
+    CHECK_EQ_INT(mesh_torch(v, 3, 4, 5), MESH_TORCH_VERTS);
+    blocktex_sub_uv(TILE_TORCH, BLOCKTEX_TORCH_X0, BLOCKTEX_TORCH_Y0, BLOCKTEX_TORCH_X1,
+                    BLOCKTEX_TORCH_Y1, side);
+    blocktex_sub_uv(TILE_TORCH, BLOCKTEX_TORCH_X0, BLOCKTEX_TORCH_Y0, BLOCKTEX_TORCH_X1,
+                    BLOCKTEX_TORCH_FLAME_Y1, top);
+    for (k = 0; k < MESH_TORCH_FACES; k++) {
+        const float *uv = faces[k] == FACE_POS_Y ? top : side;
+        const float plane[FACE_COUNT] = { 3.5f + h, 3.5f - h, top_y, 0, 5.5f + h, 5.5f - h };
+        int axis = faces[k] / 2;
+
+        f = faces[k];
+        bad = 0;
+        for (i = 0; i < MESH_FACE_VERTS; i++) {
+            const MeshVertex *p = &v[k * MESH_FACE_VERTS + i];
+            float at[3] = { p->x, p->y, p->z };
+
+            bad += p->x < 3.5f - h - TOL || p->x > 3.5f + h + TOL;
+            bad += p->z < 5.5f - h - TOL || p->z > 5.5f + h + TOL;
+            bad += p->y < 4.0f - TOL || p->y > top_y + TOL;
+            bad += fabsf(at[axis] - plane[f]) > TOL;
+            bad += fabsf(p->t - 1.0f) > TOL || fabsf(p->r - mesh_face_shade(f)) > TOL;
+            bad += p->u < uv[0] - TOL || p->u > uv[2] + TOL || p->v < uv[1] - TOL ||
+                   p->v > uv[3] + TOL;
+        }
+        CHECK_EQ_INT(bad, 0);
+        for (i = 0; i < MESH_FACE_VERTS; i += 3) {
+            float c[3];
+
+            tri_cross(&v[k * MESH_FACE_VERTS + i], c);
+            CHECK_EQ_INT(c[0] * k_out[f][0] + c[1] * k_out[f][1] + c[2] * k_out[f][2] > 0.0f, 1);
+        }
+    }
+}
+
 void test_mesh(void)
 {
     MeshVertex v[MESH_BLOCK_VERTS];
@@ -113,6 +187,7 @@ void test_mesh(void)
     CHECK_EQ_INT(block_face_tile(BLOCK_GRASS, FACE_COUNT), -1);
     CHECK_EQ_INT(block_face_tile(-1, FACE_POS_Y), -1);
 
+    test_torch_mesh();
     CHECK_EQ_INT(mesh_block(v, 0, 0, 0, BLOCK_AIR), 0);
     CHECK_EQ_INT(mesh_block(v, 0, 0, 0, BLOCK_COUNT), 0);
     CHECK_EQ_INT(mesh_block(v, 0, 0, 0, BLOCK_GRASS), MESH_BLOCK_VERTS);

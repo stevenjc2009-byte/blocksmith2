@@ -16,7 +16,24 @@ void hotbar_init(Hotbar *hb)
     hb->block[0] = BLOCK_GRASS;
     hb->block[1] = BLOCK_DIRT;
     hb->block[2] = BLOCK_STONE;
+    hb->block[3] = BLOCK_TORCH;
     hb->chosen = 0;
+}
+
+void hotbar_load(Hotbar *hb, const uint8_t blocks[HOTBAR_SLOTS], int chosen)
+{
+    int i, empty = -1;
+
+    for (i = 0; i < HOTBAR_SLOTS; i++) {
+        hb->block[i] = blocks[i];
+        if (blocks[i] == BLOCK_TORCH)
+            empty = HOTBAR_SLOTS; /* has one: none to add */
+        else if (blocks[i] == BLOCK_AIR && empty < 0)
+            empty = i;
+    }
+    if (empty >= 0 && empty < HOTBAR_SLOTS)
+        hb->block[empty] = BLOCK_TORCH;
+    hb->chosen = chosen;
 }
 
 int hotbar_slot_at(int x, int y)

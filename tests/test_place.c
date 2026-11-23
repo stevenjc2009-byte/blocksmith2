@@ -181,9 +181,47 @@ static void test_agrees_with_fits(void)
     CHECK_EQ_INT(frees > 1000, 1);
 }
 
+/* Row 3-03: a torch needs a solid block under it, and may go where the
+ * player stands (it does not get in the way). */
+static void test_torch(void)
+{
+    Player p = player_at(0.5f, 64.0f, 0.5f);
+    RayHit h;
+    int x, y, z;
+
+    flat(63);
+    h = hit_at(0, 63, 0, FACE_POS_Y); /* under the feet: allowed for a torch */
+    CHECK_EQ_INT(place_block(&s_w, &p, &h, BLOCK_TORCH, &x, &y, &z), 1);
+    CHECK_EQ_INT(world_get(&s_w, 0, 64, 0), BLOCK_TORCH);
+    h = hit_at(0, 64, 0, FACE_POS_Y); /* on top of a torch: refused */
+    CHECK_EQ_INT(place_block(&s_w, &p, &h, BLOCK_TORCH, &x, &y, &z), 0);
+    CHECK_EQ_INT(world_get(&s_w, 0, 65, 0), BLOCK_AIR);
+    world_set(&s_w, 5, 66, 5, BLOCK_STONE);
+    h = hit_at(5, 66, 5, FACE_NEG_Y); /* under a block, air below: refused */
+    CHECK_EQ_INT(place_block(&s_w, &p, &h, BLOCK_TORCH, &x, &y, &z), 0);
+    CHECK_EQ_INT(world_get(&s_w, 5, 65, 5), BLOCK_AIR);
+    world_set(&s_w, 5, 64, 6, BLOCK_DIRT); /* against a block's side, ground under the spot */
+    h = hit_at(5, 64, 6, FACE_NEG_Z);
+    CHECK_EQ_INT(place_block(&s_w, &p, &h, BLOCK_TORCH, &x, &y, &z), 1);
+    CHECK_EQ_INT(x * 10000 + y * 100 + z, 5 * 10000 + 64 * 100 + 5);
+    world_set(&s_w, 7, 63, 7, BLOCK_AIR); /* a hole one deep: stone at its floor */
+    h = hit_at(6, 63, 7, FACE_POS_X);
+    CHECK_EQ_INT(place_block(&s_w, &p, &h, BLOCK_TORCH, &x, &y, &z), 1);
+    CHECK_EQ_INT(world_get(&s_w, 7, 63, 7), BLOCK_TORCH);
+    world_set(&s_w, 7, 63, 7, BLOCK_AIR); /* the same hole with a torch at its floor */
+    world_set(&s_w, 7, 62, 7, BLOCK_TORCH);
+    h = hit_at(6, 63, 7, FACE_POS_X);
+    CHECK_EQ_INT(place_block(&s_w, &p, &h, BLOCK_TORCH, &x, &y, &z), 0);
+    /* Other blocks still keep out of the player, torch or no torch. */
+    h = hit_at(1, 63, 0, FACE_POS_Y);
+    p = player_at(1.5f, 64.0f, 0.5f);
+    CHECK_EQ_INT(place_block(&s_w, &p, &h, BLOCK_DIRT, &x, &y, &z), 0);
+}
+
 void test_place(void)
 {
     test_spot();
     test_rules();
+    test_torch();
     test_agrees_with_fits();
 }

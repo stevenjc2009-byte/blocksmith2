@@ -11,10 +11,21 @@ typedef struct {
     float r, g, b; /* brightness, the same in all three: faces are shaded by
                       the way they face, so a block's edges show, and each
                       corner is darkened by the blocks round it (row 3-01) */
+    float t;       /* torch light, 0 (none) to 1 (a torch's own cell), row
+                      3-03 (light.h); the shader lights the vertex by the
+                      brighter of the daylight and this, tinted warm */
 } MeshVertex;
 
 #define MESH_FACE_VERTS 6
 #define MESH_BLOCK_VERTS (6 * MESH_FACE_VERTS)
+
+/* A torch (row 3-03) is a thin stick, not a cube: MESH_TORCH_HALF either
+ * side of its cell's middle across x and z, from the cell's floor up to
+ * MESH_TORCH_HEIGHT. Five faces, no bottom (it stands on a block). */
+#define MESH_TORCH_HALF (1.0f / 16.0f)
+#define MESH_TORCH_HEIGHT (10.0f / 16.0f)
+#define MESH_TORCH_FACES 5
+#define MESH_TORCH_VERTS (MESH_TORCH_FACES * MESH_FACE_VERTS)
 
 /* Soft corner shadows (roadmap row 3-01, ambient occlusion): each corner of
  * a face gets a level from 0 (darkest) to MESH_AO_OPEN (nothing round it),
@@ -54,8 +65,23 @@ void mesh_face(MeshVertex out[MESH_FACE_VERTS], float x, float y, float z,
 void mesh_face_ao(MeshVertex out[MESH_FACE_VERTS], float x, float y, float z,
                   int face, int tile, const unsigned char ao[4]);
 
-/* Write all six faces of a block (MESH_BLOCK_VERTS vertices).
- * Returns the number of vertices written: 0 for air or a bad block. */
+/* The same with torch light: corner c gets t = lit[c] (mesh_face_ao() gives
+ * every corner 0). The cut along a diagonal is chosen by the shadow levels
+ * alone. */
+void mesh_face_lit(MeshVertex out[MESH_FACE_VERTS], float x, float y, float z,
+                   int face, int tile, const unsigned char ao[4], const float lit[4]);
+
+/* Write a torch standing in the cell at (x, y, z): its +x, -x, top, +z and
+ * -z faces in that order (MESH_TORCH_VERTS vertices), each counter-clockwise
+ * from outside like a block's. The sides show the stick of TILE_TORCH
+ * (BLOCKTEX_TORCH_* columns and rows) upright, the top shows its flame; every
+ * corner has its face's brightness (no corner shadows) and t = 1, so the
+ * torch glows. Returns MESH_TORCH_VERTS. */
+int mesh_torch(MeshVertex out[MESH_TORCH_VERTS], float x, float y, float z);
+
+/* Write all six faces of a block (MESH_BLOCK_VERTS vertices), or a torch's
+ * shape (mesh_torch()) for a torch. Returns the number of vertices written:
+ * 0 for air or a bad block. */
 int mesh_block(MeshVertex *out, float x, float y, float z, int block);
 
 #endif

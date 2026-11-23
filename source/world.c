@@ -12,6 +12,7 @@ void world_init(World *w, uint32_t seed)
     w->seed = seed;
     w->store = NULL;
     w->lost = 0;
+    w->torch_edits = 0;
     for (j = 0; j < WORLD_SLOTS; j++)
         for (i = 0; i < WORLD_SLOTS; i++) {
             w->slots[j][i].loaded = false;
@@ -119,8 +120,11 @@ void world_set(World *w, int x, int y, int z, int block)
         return;
     before = chunk_get(c, lx, y, lz);
     chunk_set(c, lx, y, lz, block);
-    if (chunk_get(c, lx, y, lz) != before)
+    if (chunk_get(c, lx, y, lz) != before) {
         slot_of(w, cx, cz)->changed = true;
+        if (before == BLOCK_TORCH || block == BLOCK_TORCH)
+            w->torch_edits++;
+    }
 }
 
 bool world_break(World *w, int x, int y, int z)
@@ -128,6 +132,8 @@ bool world_break(World *w, int x, int y, int z)
     if (y <= 0 || world_get(w, x, y, z) == BLOCK_AIR)
         return false;
     world_set(w, x, y, z, BLOCK_AIR);
+    if (world_get(w, x, y + 1, z) == BLOCK_TORCH)
+        world_set(w, x, y + 1, z, BLOCK_AIR);
     return true;
 }
 

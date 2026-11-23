@@ -31,7 +31,8 @@ void gpu_state_texture(const void *tex, int w, int h);
 void gpu_state_texenv(void);
 
 /* Vertices come from `verts`: position (3 floats), texture coordinates
- * (2 floats), brightness (3 floats), `stride` bytes apart. */
+ * (2 floats), brightness (3 floats), torch light (1 float, row 3-03),
+ * `stride` bytes apart (MeshVertex). */
 void gpu_state_vertex_input(const void *verts, unsigned stride);
 
 /* Load a 4x4 matrix into the float uniform at register `reg`. */

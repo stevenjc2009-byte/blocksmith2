@@ -45,8 +45,8 @@ const signed char *mesh_face_corner(int face, int corner)
     return k_corners[face][corner];
 }
 
-void mesh_face_ao(MeshVertex out[MESH_FACE_VERTS], float x, float y, float z,
-                  int face, int tile, const unsigned char ao[4])
+void mesh_face_lit(MeshVertex out[MESH_FACE_VERTS], float x, float y, float z,
+                   int face, int tile, const unsigned char ao[4], const float lit[4])
 {
     float uv[4], shade = k_shade[face];
     const unsigned char *order = k_order[abs(ao[0] - ao[2]) > abs(ao[1] - ao[3])];
@@ -64,7 +64,55 @@ void mesh_face_ao(MeshVertex out[MESH_FACE_VERTS], float x, float y, float z,
         v->u = (c == 1 || c == 2) ? uv[2] : uv[0]; /* right corners get the right edge */
         v->v = (c >= 2) ? uv[3] : uv[1];           /* top corners get the top edge */
         v->r = v->g = v->b = shade * mesh_ao_scale(ao[c]);
+        v->t = lit[c];
     }
+}
+
+void mesh_face_ao(MeshVertex out[MESH_FACE_VERTS], float x, float y, float z,
+                  int face, int tile, const unsigned char ao[4])
+{
+    static const float k_dark[4] = { 0.0f, 0.0f, 0.0f, 0.0f };
+
+    mesh_face_lit(out, x, y, z, face, tile, ao, k_dark);
+}
+
+/* One face of a torch: the cube face's corners pulled in to the stick. */
+static void torch_face(MeshVertex out[MESH_FACE_VERTS], float x, float y, float z, int face,
+                       const float uv[4])
+{
+    const float cx = x + 0.5f, cz = z + 0.5f;
+    int i;
+
+    for (i = 0; i < MESH_FACE_VERTS; i++) {
+        int c = k_order[0][i];
+        const signed char *p = k_corners[face][c];
+        MeshVertex *v = &out[i];
+
+        v->x = cx + (p[0] ? MESH_TORCH_HALF : -MESH_TORCH_HALF);
+        v->y = y + (p[1] ? MESH_TORCH_HEIGHT : 0.0f);
+        v->z = cz + (p[2] ? MESH_TORCH_HALF : -MESH_TORCH_HALF);
+        v->u = (c == 1 || c == 2) ? uv[2] : uv[0];
+        v->v = (c >= 2) ? uv[3] : uv[1];
+        v->r = v->g = v->b = k_shade[face];
+        v->t = 1.0f;
+    }
+}
+
+int mesh_torch(MeshVertex out[MESH_TORCH_VERTS], float x, float y, float z)
+{
+    static const unsigned char k_faces[MESH_TORCH_FACES] = { FACE_POS_X, FACE_NEG_X, FACE_POS_Y,
+                                                             FACE_POS_Z, FACE_NEG_Z };
+    float side[4], top[4];
+    int k;
+
+    blocktex_sub_uv(TILE_TORCH, BLOCKTEX_TORCH_X0, BLOCKTEX_TORCH_Y0, BLOCKTEX_TORCH_X1,
+                    BLOCKTEX_TORCH_Y1, side);
+    blocktex_sub_uv(TILE_TORCH, BLOCKTEX_TORCH_X0, BLOCKTEX_TORCH_Y0, BLOCKTEX_TORCH_X1,
+                    BLOCKTEX_TORCH_FLAME_Y1, top);
+    for (k = 0; k < MESH_TORCH_FACES; k++)
+        torch_face(out + k * MESH_FACE_VERTS, x, y, z, k_faces[k],
+                   k_faces[k] == FACE_POS_Y ? top : side);
+    return MESH_TORCH_VERTS;
 }
 
 void mesh_face(MeshVertex out[MESH_FACE_VERTS], float x, float y, float z,
@@ -79,6 +127,8 @@ int mesh_block(MeshVertex *out, float x, float y, float z, int block)
 
     if (block_face_tile(block, 0) < 0)
         return 0;
+    if (block == BLOCK_TORCH)
+        return mesh_torch(out, x, y, z);
     for (face = 0; face < FACE_COUNT; face++)
         mesh_face(out + face * MESH_FACE_VERTS, x, y, z, face,
                   block_face_tile(block, face));

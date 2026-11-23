@@ -125,20 +125,20 @@ void gpu_state_vertex_input(const void *verts, unsigned stride)
 
     GPUCMD_AddWrite(GPUREG_ATTRIBBUFFERS_LOC, osConvertVirtToPhys(verts) >> 3);
     fmt[0] = GPU_ATTRIBFMT(0, 3, GPU_FLOAT) | GPU_ATTRIBFMT(1, 2, GPU_FLOAT) |
-             GPU_ATTRIBFMT(2, 3, GPU_FLOAT);
-    fmt[1] = (3 - 1) << 28; /* three attributes, none fixed */
+             GPU_ATTRIBFMT(2, 3, GPU_FLOAT) | GPU_ATTRIBFMT(3, 1, GPU_FLOAT);
+    fmt[1] = (4 - 1) << 28; /* four attributes (row 3-03 added torch light), none fixed */
     GPUCMD_AddIncrementalWrites(GPUREG_ATTRIBBUFFERS_FORMAT_LOW, fmt, 2);
-    GPUCMD_AddMaskedWrite(GPUREG_VSH_INPUTBUFFER_CONFIG, 0xB, 0xA0000000 | (3 - 1));
-    GPUCMD_AddWrite(GPUREG_VSH_NUM_ATTR, 3 - 1);
-    perm[0] = 0x210; /* attribute n -> shader input vn */
+    GPUCMD_AddMaskedWrite(GPUREG_VSH_INPUTBUFFER_CONFIG, 0xB, 0xA0000000 | (4 - 1));
+    GPUCMD_AddWrite(GPUREG_VSH_NUM_ATTR, 4 - 1);
+    perm[0] = 0x3210; /* attribute n -> shader input vn */
     perm[1] = 0;
     GPUCMD_AddIncrementalWrites(GPUREG_VSH_ATTRIBUTES_PERMUTATION_LOW, perm, 2);
 
-    /* Buffer 0 holds all three attributes; the other eleven are off. */
+    /* Buffer 0 holds all four attributes; the other eleven are off. */
     memset(bufs, 0, sizeof bufs);
-    bufs[0] = 0;     /* offset from ATTRIBBUFFERS_LOC */
-    bufs[1] = 0x210; /* attributes 0, 1, 2 in that order */
-    bufs[2] = (stride << 16) | (3u << 28);
+    bufs[0] = 0;      /* offset from ATTRIBBUFFERS_LOC */
+    bufs[1] = 0x3210; /* attributes 0, 1, 2, 3 in that order */
+    bufs[2] = (stride << 16) | (4u << 28);
     GPUCMD_AddIncrementalWrites(GPUREG_ATTRIBBUFFER0_OFFSET, bufs, 12 * 3);
 }
 

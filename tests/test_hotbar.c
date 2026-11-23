@@ -47,7 +47,8 @@ static void test_choose(void)
     CHECK_EQ_INT(hotbar_block(&hb), BLOCK_GRASS);
     CHECK_EQ_INT(hb.block[1], BLOCK_DIRT);
     CHECK_EQ_INT(hb.block[2], BLOCK_STONE);
-    CHECK_EQ_INT(hb.block[3], BLOCK_AIR);
+    CHECK_EQ_INT(hb.block[3], BLOCK_TORCH); /* row 3-03 */
+    CHECK_EQ_INT(hb.block[4], BLOCK_AIR);
     CHECK_EQ_INT(hb.block[8], BLOCK_AIR);
 
     CHECK_EQ_INT(hotbar_tap(&hb, X0 + 2 * P + 10, Y0 + 20), 1);
@@ -153,9 +154,35 @@ static void test_draw(void)
     }
 }
 
+/* Row 3-03: a saved hotbar comes back as it was, with a torch put in the
+ * first empty slot when it has none (a world from before torches). */
+static void test_load(void)
+{
+    static const uint8_t old[HOTBAR_SLOTS] = { 1, 2, 3, 0, 3, 0, 0, 0, 0 };
+    static const uint8_t has[HOTBAR_SLOTS] = { 0, 4, 1, 0, 0, 0, 0, 0, 2 };
+    static const uint8_t full[HOTBAR_SLOTS] = { 1, 2, 3, 1, 2, 3, 1, 2, 3 };
+    Hotbar hb;
+    int i;
+
+    hotbar_load(&hb, old, 4);
+    CHECK_EQ_INT(hb.chosen, 4);
+    CHECK_EQ_INT(hb.block[3], BLOCK_TORCH);
+    CHECK_EQ_INT(hb.block[4], BLOCK_STONE);
+    CHECK_EQ_INT(hb.block[5], BLOCK_AIR);
+    hotbar_load(&hb, has, 8);
+    for (i = 0; i < HOTBAR_SLOTS; i++)
+        CHECK_EQ_INT(hb.block[i], has[i]);
+    CHECK_EQ_INT(hb.chosen, 8);
+    hotbar_load(&hb, full, 0);
+    for (i = 0; i < HOTBAR_SLOTS; i++)
+        CHECK_EQ_INT(hb.block[i], full[i]);
+    CHECK_EQ_INT(BLOCK_TORCH, 4);
+}
+
 void test_hotbar(void)
 {
     test_layout();
     test_choose();
+    test_load();
     test_draw();
 }

@@ -17,7 +17,14 @@ int block_face_tile(int block, int face)
         return TILE_DIRT;
     case BLOCK_STONE:
         return TILE_STONE;
+    case BLOCK_TORCH:
+        return TILE_TORCH;
     default:
         return -1; /* air, or not a block */
     }
+}
+
+bool block_solid(int block)
+{
+    return block == BLOCK_GRASS || block == BLOCK_DIRT || block == BLOCK_STONE;
 }

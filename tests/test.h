@@ -7,6 +7,7 @@
 #include <stdint.h>
 #include <stdio.h>
 
+#include "chunk_mesh.h"
 #include "world.h"
 
 extern int g_checks;
@@ -85,6 +86,14 @@ void test_lidsave(void);
 void test_save_backup(void);
 void test_ao(void);
 void test_sky(void);
+void test_light(void);
+
+/* Row 3-03's reference torch light (test_light.c): fills a table for chunk
+ * c and its neighbours (nb as chunk_mesh.h, NULL entries air) from the rule
+ * in light.h; test_ref_level() reads it for local (x, y, z), x and z from
+ * -CHUNK_SIZE to 2 * CHUNK_SIZE - 1 (0 outside, or outside the world). */
+void test_ref_light(const Chunk *c, const Chunk *const nb[NB_COUNT]);
+int test_ref_level(int x, int y, int z);
 
 /* Row 3-01's reference corner shadow (test_ao.c): the level (0 to
  * MESH_AO_OPEN) of corner `corner` of face `face` of the block at (bx, by,

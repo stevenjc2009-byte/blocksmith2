@@ -27,13 +27,15 @@ typedef struct {
     bool on_ground;  /* standing on something after the last step */
 } Player;
 
-/* Does block (x, y, z) stop the player? */
+/* Does block (x, y, z) stop the player? Solid blocks (block_solid()) do;
+ * air and torches (row 3-03) do not. */
 bool player_solid(const World *w, int x, int y, int z);
 
 /* Would the body fit with its feet at (x, y, z), touching no solid block? */
 bool player_fits(const World *w, float x, float y, float z);
 
-/* Stand the player in the middle of column (x, z), on its top block. */
+/* Stand the player in the middle of column (x, z), on its top solid block
+ * (over any torch standing on it). */
 void player_spawn(Player *p, const World *w, int x, int z);
 
 /* Move for dt seconds, walking at (vx, vz) blocks a second (from

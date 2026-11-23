@@ -60,7 +60,10 @@ static int ref_solid(const Chunk *c, const Chunk *const nb[NB_COUNT], int x, int
         x -= dx * CHUNK_SIZE;
         z -= dz * CHUNK_SIZE;
     }
-    return o && chunk_get(o, x, y, z) != BLOCK_AIR;
+    if (o == NULL)
+        return 0;
+    x = chunk_get(o, x, y, z);
+    return x == BLOCK_GRASS || x == BLOCK_DIRT || x == BLOCK_STONE; /* not air or a torch */
 }
 
 typedef struct {
@@ -79,7 +82,42 @@ static const int k_step[FACE_COUNT][3] = {
     { 1, 0, 0 }, { -1, 0, 0 }, { 0, 1, 0 }, { 0, -1, 0 }, { 0, 0, 1 }, { 0, 0, -1 },
 };
 
+/* Row 3-03's torch light at corner `corner` of face `face` of the block at
+ * (bx, by, bz), from the rule in chunk_mesh.h, levels from test_ref_level()
+ * (test_light.c, filled for this chunk first). In the layer in front of
+ * the face, the corner's point touches the cell in front, one beside it
+ * along each of the two other axes (lower axis first) and one across. */
+static float ref_corner_light(const RefCtx *r, int bx, int by, int bz, int face, int corner)
+{
+    const signed char *p = mesh_face_corner(face, corner);
+    int v[3] = { bx + p[0], by + p[1], bz + p[2] };
+    int front[3] = { bx + k_step[face][0], by + k_step[face][1], bz + k_step[face][2] };
+    int cell[4][3], open[4], ax[2], t, k = 0, i;
+    float sum = 0.0f;
+    int n = 0;
+
+    for (t = 0; t < 3; t++)
+        if (t != face / 2)
+            ax[k++] = t;
+    for (i = 0; i < 4; i++) {
+        memcpy(cell[i], front, sizeof front);
+        for (k = 0; k < 2; k++)
+            if ((i == 1 && k == 0) || (i == 2 && k == 1) || i == 3) /* 1, 2 sides; 3 across */
+                cell[i][ax[k]] += v[ax[k]] == front[ax[k]] ? -1 : 1;
+        open[i] = !ref_solid(r->c, r->nb, cell[i][0], cell[i][1], cell[i][2]);
+    }
+    if (!open[1] && !open[2])
+        open[3] = 0; /* both sides solid: the one across is left out */
+    for (i = 0; i < 4; i++)
+        if (i == 0 || open[i]) {
+            sum += (float)test_ref_level(cell[i][0], cell[i][1], cell[i][2]) / 14.0f;
+            n++;
+        }
+    return sum / (float)n;
+}
+
 static unsigned s_rng;
+static int s_lit; /* vertices of the last reference mesh with any torch light */
 
 static int rnd(int n)
 {
@@ -107,6 +145,10 @@ static int ref_mesh(const Chunk *const nb[NB_COUNT], float ox, float oz, MeshVer
     RefCtx r = { &s_c, nb };
     int x, y, z, f, k, faces = 0;
 
+    if (out) {
+        test_ref_light(&s_c, nb);
+        s_lit = 0;
+    }
     for (y = 0; y < WORLD_HEIGHT; y++)
         for (z = 0; z < CHUNK_SIZE; z++)
             for (x = 0; x < CHUNK_SIZE; x++) {
@@ -114,15 +156,25 @@ static int ref_mesh(const Chunk *const nb[NB_COUNT], float ox, float oz, MeshVer
 
                 if (b == BLOCK_AIR)
                     continue;
+                if (b == BLOCK_TORCH) { /* the stick, whatever is round it */
+                    if (out)
+                        mesh_torch(out + faces * MESH_FACE_VERTS, ox + (float)x, (float)y, oz + (float)z);
+                    faces += MESH_TORCH_FACES;
+                    continue;
+                }
                 for (f = 0; f < FACE_COUNT; f++)
                     if (!ref_solid(&s_c, nb, x + k_step[f][0], y + k_step[f][1], z + k_step[f][2])) {
                         if (out) {
                             unsigned char ao[4];
+                            float t[4];
 
-                            for (k = 0; k < 4; k++)
+                            for (k = 0; k < 4; k++) {
                                 ao[k] = (unsigned char)test_ref_ao(ctx_solid, &r, x, y, z, f, k);
-                            mesh_face_ao(out + faces * MESH_FACE_VERTS, ox + (float)x, (float)y,
-                                         oz + (float)z, f, block_face_tile(b, f), ao);
+                                t[k] = ref_corner_light(&r, x, y, z, f, k);
+                                s_lit += t[k] > 0.0f;
+                            }
+                            mesh_face_lit(out + faces * MESH_FACE_VERTS, ox + (float)x, (float)y,
+                                          oz + (float)z, f, block_face_tile(b, f), ao, t);
                         }
                         faces++;
                     }
@@ -152,6 +204,7 @@ static void test_random_against_reference(void)
     static const unsigned seeds[] = { 1, 7, 42, 1234, 99991 };
     const Chunk *nb[NB_COUNT] = ALL_NB;
     size_t si;
+    int lit = 0;
 
     for (si = 0; si < sizeof seeds / sizeof seeds[0]; si++) {
         int x, y, z, i;
@@ -167,7 +220,9 @@ static void test_random_against_reference(void)
         for (i = 0; i < NB_COUNT; i++)
             random_fill(&s_nb[i], 0, 12, 50);
         CHECK_EQ_INT(check_reference(use, -48.0f, 80.0f) > 0, 1);
+        lit += s_lit; /* a quarter of the filled cells are torches */
     }
+    CHECK_EQ_INT(lit > 1000, 1);
 }
 
 /* Dig one cell of chunk c to air, check s_c's mesh against the reference
@@ -245,6 +300,69 @@ static void test_buried_layers(void)
     CHECK_EQ_INT(check_reference(nb, 0.0f, 0.0f), 0);
 }
 
+/* The top solid layer of column (x, z) of chunk c. */
+static int top_of(const Chunk *c, int x, int z)
+{
+    int y = WORLD_HEIGHT - 1;
+
+    while (y > 0 && chunk_get(c, x, y, z) == BLOCK_AIR)
+        y--;
+    return y;
+}
+
+/* Torches in real ground (row 3-03): one in a pocket dug deep down (so the
+ * mesh's skipped layers move down to it), one on the surface, one on a
+ * neighbour's surface just past the edge, each against the reference. */
+static void test_torches_in_ground(void)
+{
+    static const int k_at[NB_COUNT][2] = { { 1, 0 }, { -1, 0 }, { 0, 1 }, { 0, -1 },
+                                           { 1, 1 }, { -1, 1 }, { 1, -1 }, { -1, -1 } };
+    const Chunk *nb[NB_COUNT] = ALL_NB;
+    int i, base, low = WORLD_HEIGHT, x, z;
+
+    terrain_fill_chunk(&s_c, 2026u, 0, 0);
+    for (i = 0; i < NB_COUNT; i++)
+        terrain_fill_chunk(&s_nb[i], 2026u, k_at[i][0], k_at[i][1]);
+    for (z = 0; z < CHUNK_SIZE; z++)
+        for (x = 0; x < CHUNK_SIZE; x++)
+            if (top_of(&s_c, x, z) < low)
+                low = top_of(&s_c, x, z);
+    base = check_reference(nb, 0.0f, 0.0f);
+    CHECK_EQ_INT(s_lit, 0);
+
+    chunk_set(&s_c, 8, low - 9, 8, BLOCK_AIR);
+    chunk_set(&s_c, 8, low - 10, 8, BLOCK_TORCH);
+    /* The two-cell pocket shows the ten faces round it, all four corners lit. */
+    CHECK_EQ_INT(check_reference(nb, 0.0f, 0.0f), base + 10 + MESH_TORCH_FACES);
+    CHECK_EQ_INT(s_lit, 10 * 4);
+    chunk_set(&s_c, 4, top_of(&s_c, 4, 4) + 1, 4, BLOCK_TORCH);
+    chunk_set(&s_nb[NB_NEG_X], 15, top_of(&s_nb[NB_NEG_X], 15, 9) + 1, 9, BLOCK_TORCH);
+    /* The neighbour's torch is its own mesh's; its light reaches this one. */
+    CHECK_EQ_INT(check_reference(nb, 16.0f, -32.0f), base + 10 + 2 * MESH_TORCH_FACES);
+    CHECK_EQ_INT(s_lit > 10 * 4 + 200, 1);
+    CHECK_EQ_INT(check_reference(k_none, 16.0f, -32.0f) > base, 1);
+}
+
+/* The cells one layer under the lowest meshed one light its faces' corners
+ * too: a hole in the +x neighbour sets that layer (20), and a torch in a
+ * pocket in the corner neighbour lights the cell one down and across. */
+static void test_light_under_lowest(void)
+{
+    const Chunk *nb[NB_COUNT] = ALL_NB;
+    int i;
+
+    chunk_clear(&s_c);
+    memset(s_c.blocks, BLOCK_STONE, 40 * sizeof s_c.blocks[0]);
+    for (i = 0; i < NB_COUNT; i++)
+        memcpy(s_nb[i].blocks, s_c.blocks, sizeof s_c.blocks);
+    chunk_set(&s_nb[NB_POS_X], 0, 20, 15, BLOCK_AIR);
+    chunk_set(&s_nb[NB_POS_X_POS_Z], 0, 20, 0, BLOCK_AIR);
+    chunk_set(&s_nb[NB_POS_X_POS_Z], 0, 19, 0, BLOCK_AIR);
+    chunk_set(&s_nb[NB_POS_X_POS_Z], 1, 19, 0, BLOCK_TORCH);
+    CHECK_EQ_INT(check_reference(nb, 0.0f, 0.0f), CHUNK_SIZE * CHUNK_SIZE + 1);
+    CHECK_EQ_INT(s_lit, 4);
+}
+
 static void test_buffer_too_small(void)
 {
     /* Room for 4 faces, but the call is only allowed 3: a 4th face written
@@ -264,5 +382,7 @@ void test_chunk_ref(void)
 {
     test_random_against_reference();
     test_buried_layers();
+    test_torches_in_ground();
+    test_light_under_lowest();
     test_buffer_too_small();
 }

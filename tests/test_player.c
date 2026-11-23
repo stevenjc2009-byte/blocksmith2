@@ -117,6 +117,28 @@ static void test_spawn_and_fall(void)
     CHECK_EQ_INT(s_inside, 0);
 }
 
+/* Row 3-03: a torch is not solid. The player walks through it, and spawns
+ * on the ground under one, not on top of it. */
+static void test_torch(void)
+{
+    Player p;
+    int z;
+
+    flat(60);
+    for (z = -3; z >= -6; z--)
+        world_set(&s_w, 0, 61, z, BLOCK_TORCH);
+    CHECK_EQ_INT(player_solid(&s_w, 0, 61, -3), 0);
+    world_set(&s_w, 2, 61, 2, BLOCK_TORCH);
+    player_spawn(&p, &s_w, 2, 2);
+    CHECK_NEAR(p.y, 61.0, TOL);
+    player_spawn(&p, &s_w, 0, 0);
+    run(&p, 0, 0, 0.5f, DT);
+    run(&p, 0, -4.3f, 2.0f, DT); /* north, through the row of torches */
+    CHECK_NEAR(p.z, 0.5 - 8.6, 0.02);
+    CHECK_NEAR(p.y, 61.0, TOL);
+    CHECK_EQ_INT(s_inside, 0);
+}
+
 static void test_walk_flat(void)
 {
     Player p;
@@ -320,6 +342,7 @@ void test_player(void)
     test_solid();
     test_spawn_and_fall();
     test_walk_flat();
+    test_torch();
     test_walls();
     test_steps();
     test_ceiling();

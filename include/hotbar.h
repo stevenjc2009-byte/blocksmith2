@@ -23,9 +23,15 @@ typedef struct {
     int chosen;              /* 0 .. HOTBAR_SLOTS - 1 */
 } Hotbar;
 
-/* Grass, dirt and stone in the first three slots, the rest empty, the
- * first slot chosen. */
+/* Grass, dirt, stone and a torch (row 3-03) in the first four slots, the
+ * rest empty, the first slot chosen. */
 void hotbar_init(Hotbar *hb);
+
+/* The hotbar a saved world kept: its slots' blocks and chosen slot (checked
+ * by save.c). A world saved before torches came (row 3-03) gets one in its
+ * first empty slot, so every world can have them; a hotbar that already
+ * holds one, or has no empty slot, is kept as it was. */
+void hotbar_load(Hotbar *hb, const uint8_t blocks[HOTBAR_SLOTS], int chosen);
 
 /* The slot under bottom-screen point (x, y), or -1 if none. */
 int hotbar_slot_at(int x, int y);

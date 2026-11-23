@@ -41,7 +41,11 @@ bool place_block(World *w, const Player *p, const RayHit *hit, int b, int *x, in
         return false;
     if (*y < 0 || *y >= WORLD_HEIGHT || world_chunk(w, block_to_chunk(*x), block_to_chunk(*z)) == NULL)
         return false;
-    if (world_get(w, *x, *y, *z) != BLOCK_AIR || place_hits_player(p, *x, *y, *z))
+    if (world_get(w, *x, *y, *z) != BLOCK_AIR)
+        return false;
+    /* A torch stands on a solid block and does not get in the way, so it
+     * may go where the player is (row 3-03). */
+    if (b == BLOCK_TORCH ? !block_solid(world_get(w, *x, *y - 1, *z)) : place_hits_player(p, *x, *y, *z))
         return false;
     world_set(w, *x, *y, *z, b);
     return true;

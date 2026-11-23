@@ -25,7 +25,7 @@ bool player_solid(const World *w, int x, int y, int z)
         return false;
     if (world_chunk(w, block_to_chunk(x), block_to_chunk(z)) == NULL)
         return true; /* not loaded: a wall */
-    return world_get(w, x, y, z) != BLOCK_AIR;
+    return block_solid(world_get(w, x, y, z));
 }
 
 /* Does the box from (x0, y0, z0) to (x1, y1, z1) overlap a solid block? */
@@ -50,7 +50,7 @@ void player_spawn(Player *p, const World *w, int x, int z)
 {
     int y = WORLD_HEIGHT - 1;
 
-    while (y >= 0 && world_get(w, x, y, z) == BLOCK_AIR)
+    while (y >= 0 && !block_solid(world_get(w, x, y, z)))
         y--;
     p->x = (float)x + 0.5f;
     p->y = (float)(y + 1);

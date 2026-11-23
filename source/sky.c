@@ -91,6 +91,7 @@ static void quad(MeshVertex out[MESH_FACE_VERTS], const float d[3], float half, 
         o->r = rgb[0];
         o->g = rgb[1];
         o->b = rgb[2];
+        o->t = 0.0f; /* no torch light (row 3-03) */
     }
 }
 

@@ -84,6 +84,37 @@ static void check_grass_side(void)
     CHECK_EQ_INT(max_run > min_run, 1);
 }
 
+/* Row 3-03: the torch tile is a two-texel stick on the slot grey, columns
+ * 7 and 8: flame and ember in rows 6 to 8, wood in rows 9 to 15. */
+static void check_torch(void)
+{
+    const float t = 1.0f / BLOCKTEX_SIZE;
+    float uv[4];
+    int x, y, grey = 0, flame = 0, wood = 0;
+
+    for (y = 0; y < BLOCKTEX_TILE; y++)
+        for (x = 0; x < BLOCKTEX_TILE; x++) {
+            uint32_t c = texel(TILE_TORCH, x, y);
+            int stick = x >= 7 && x <= 8 && y >= 6;
+
+            if (!stick && red(c) == 60 && green(c) == 60 && blue(c) == 60)
+                grey++;
+            else if (stick && y <= 8 && red(c) >= 240 && green(c) > blue(c))
+                flame++;
+            else if (stick && y >= 9 && is_brown(c) && red(c) < 140)
+                wood++;
+        }
+    CHECK_EQ_INT(grey, 256 - 20);
+    CHECK_EQ_INT(flame, 6);
+    CHECK_EQ_INT(wood, 14);
+    CHECK_EQ_INT(TILE_TORCH, 6); /* column 2, row 1: left at texel 32, top at 16 */
+    blocktex_sub_uv(TILE_TORCH, 7, 6, 9, 16, uv);
+    CHECK_NEAR(uv[0], 0.5f + 7 * t + BLOCKTEX_INSET, TOL);
+    CHECK_NEAR(uv[2], 0.5f + 9 * t - BLOCKTEX_INSET, TOL);
+    CHECK_NEAR(uv[3], 0.75f - 6 * t - BLOCKTEX_INSET, TOL);
+    CHECK_NEAR(uv[1], 0.5f + BLOCKTEX_INSET, TOL);
+}
+
 void test_blocktex(void)
 {
     static uint32_t again[BLOCKTEX_SIZE * BLOCKTEX_SIZE];
@@ -103,6 +134,7 @@ void test_blocktex(void)
     check_tile_all(TILE_DIRT, is_brown, "brown");
     check_tile_all(TILE_STONE, is_grey, "grey");
     check_grass_side();
+    check_torch();
 
     for (t = 0; t < TILE_COUNT; t++)
         CHECK_EQ_INT(colours_in(t) >= 8, 1);

@@ -117,6 +117,26 @@ static uint32_t moon_texel(int x, int y)
     return rim ? rgb(194 + d, 200 + d, 212 + d) : rgb(214 + d, 220 + d, 232 + d);
 }
 
+/* The torch (row 3-03): a stick two texels wide in columns 7 and 8, rows 6
+ * to 15 (BLOCKTEX_TORCH_*): a yellow-white flame (rows 6 and 7), an orange
+ * ember (row 8) and brown wood with a little grain (rows 9 to 15). The rest
+ * is the hotbar's empty-slot grey, so the torch's icon is a torch standing
+ * in a slot; the torch in the world only shows the stick. */
+static uint32_t torch_texel(int x, int y)
+{
+    int d = wobble(hash3((uint32_t)x, (uint32_t)y, 8), 6);
+
+    if (x < BLOCKTEX_TORCH_X0 || x >= BLOCKTEX_TORCH_X1 || y < BLOCKTEX_TORCH_Y0)
+        return rgb(60, 60, 60);
+    if (y == BLOCKTEX_TORCH_Y0)
+        return rgb(255, 244, 170 + d);
+    if (y < BLOCKTEX_TORCH_FLAME_Y1)
+        return rgb(255, 204 + d, 64);
+    if (y == BLOCKTEX_TORCH_FLAME_Y1)
+        return rgb(240, 128 + d, 36);
+    return rgb(124 + d, 86 + d, 48 + d / 2);
+}
+
 /* A loud check for tiles nothing uses yet. */
 static uint32_t missing_texel(int x, int y)
 {
@@ -132,6 +152,7 @@ static uint32_t tile_texel(int tile, int x, int y)
     case TILE_STONE:      return stone_texel(x, y);
     case TILE_SUN:        return sun_texel(x, y);
     case TILE_MOON:       return moon_texel(x, y);
+    case TILE_TORCH:      return torch_texel(x, y);
     default:              return missing_texel(x, y);
     }
 }
@@ -146,6 +167,18 @@ void blocktex_build(uint32_t *atlas)
             atlas[y * BLOCKTEX_SIZE + x] =
                 tile_texel(tile, x % BLOCKTEX_TILE, y % BLOCKTEX_TILE);
         }
+}
+
+void blocktex_sub_uv(int tile, int x0, int y0, int x1, int y1, float uv[4])
+{
+    const float texel = 1.0f / BLOCKTEX_SIZE;
+    int left = (tile % BLOCKTEX_PER_ROW) * BLOCKTEX_TILE;
+    int top = (tile / BLOCKTEX_PER_ROW) * BLOCKTEX_TILE; /* texels from the top */
+
+    uv[0] = (left + x0) * texel + BLOCKTEX_INSET;
+    uv[2] = (left + x1) * texel - BLOCKTEX_INSET;
+    uv[3] = 1.0f - (top + y0) * texel - BLOCKTEX_INSET;
+    uv[1] = 1.0f - (top + y1) * texel + BLOCKTEX_INSET;
 }
 
 void blocktex_tile_uv(int tile, float uv[4])

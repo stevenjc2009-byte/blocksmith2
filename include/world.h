@@ -51,6 +51,8 @@ typedef struct {
     uint32_t seed;
     const WorldStore *store; /* NULL: none */
     int lost; /* changed chunks put away that the store could not keep */
+    unsigned torch_edits; /* world_set() calls that put or took away a torch
+                             (row 3-03: meshes.c relights round them) */
 } World;
 
 /* An empty world: nothing loaded yet, no store. Its ground comes from the
@@ -88,12 +90,14 @@ const Chunk *world_chunk(const World *w, int cx, int cz);
 int world_get(const World *w, int x, int y, int z);
 
 /* Set the block at world (x, y, z); spots outside a loaded chunk are
- * ignored. A block that really changes marks its chunk changed. */
+ * ignored. A block that really changes marks its chunk changed, and counts
+ * in w->torch_edits when it was or becomes a torch. */
 void world_set(World *w, int x, int y, int z, int block);
 
-/* Break the block at (x, y, z): it turns to air. False, and nothing
- * changes, for air, for y 0 (the floor of the world stays, so nobody can
- * dig out of it) and for spots outside a loaded chunk. */
+/* Break the block at (x, y, z): it turns to air, and so does a torch
+ * standing on it (row 3-03: a torch needs a solid block under it). False,
+ * and nothing changes, for air, for y 0 (the floor of the world stays, so
+ * nobody can dig out of it) and for spots outside a loaded chunk. */
 bool world_break(World *w, int x, int y, int z);
 
 /* Most chunks world_touched_chunks() lists. */

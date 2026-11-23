@@ -19,10 +19,14 @@
  * of memory for a mesh. */
 bool meshes_stream(World *w, int pcx, int pcz, int view, int jobs);
 
-/* Rebuild the built meshes a change to block column (x, z) touches (a chunk
+/* Rebuild the built meshes a change to block (x, y, z) touches (a chunk
  * still waiting for its mesh gets the change when it is built). False if
- * out of memory. */
-bool meshes_rebuild_around(const World *w, int x, int z);
+ * out of memory. The other chunks whose torch light it changes (row 3-03,
+ * light_touched_box()) are marked stale: their old meshes stay drawn and
+ * meshes_stream() rebuilds them like new ones, nearest first, one job at a
+ * time, so a torch's pool of light spreads over a few frames. A change to a
+ * torch is told by w->torch_edits moving on since the last call. */
+bool meshes_rebuild_around(const World *w, int x, int y, int z);
 
 /* Every mesh, drawn with mvp (between gpu_frame_begin() and gpu_frame_end()). */
 void meshes_draw(const Mat4 *mvp);

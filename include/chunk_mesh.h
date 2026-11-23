@@ -7,7 +7,10 @@
 #include "mesh.h"
 
 /* Triangles for a whole chunk, skipping every face nobody can see: a face
- * is drawn only when the cell next to it is air.
+ * is drawn only when the cell next to it is not solid (block_solid(): air or
+ * a torch). A torch is drawn as its stick (mesh_torch(), all five faces,
+ * whatever is round it), after the faces of the blocks before it in the
+ * walk.
  *
  * The cell next to a face:
  * - below the world (y < 0) counts as solid, so the bottom layer has no
@@ -25,6 +28,14 @@
  * for each of the three that is solid. Cells are judged solid by the same
  * rules as above, so a corner on a chunk's corner looks into the chunk
  * across that corner too.
+ *
+ * Torch light (row 3-03): each corner of a seen face gets t (mesh.h) from
+ * the same four cells: the average of light_brightness() of their levels
+ * (light.h), over the cell in front and those of the other three that are
+ * not solid, leaving out the one across the corner when both sides are
+ * solid (as for the shadow). Summed in that order (front, the side across
+ * the face's first axis, the second, the corner), then divided by how
+ * many. No torch near the chunk: every t is 0.
  *
  * Neighbour list order: */
 enum {
