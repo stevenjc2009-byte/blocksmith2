@@ -3,7 +3,8 @@
 
 #include <stdint.h>
 
-/* The block textures and the sun and moon (row 3-02), drawn in code
+/* The block textures, the sun and moon (row 3-02) and the clouds' white
+ * (row 3-04), drawn in code
  * (kickoff F-4): one 64 x 64 picture holding a 4 x 4 grid of 16 x 16
  * tiles. Tile i sits in column i % 4 and row i / 4, counting rows from the
  * top. */
@@ -24,6 +25,7 @@ enum {
     TILE_MOON,
     TILE_TORCH, /* row 3-03: the torch's stick and flame in columns 7 and 8, rows 6 to
                    15 (TORCH_* in mesh.h); the rest is the hotbar's empty-slot grey */
+    TILE_CLOUD, /* row 3-04: plain white, for the clouds (cloud.h) */
     TILE_COUNT
 };
 

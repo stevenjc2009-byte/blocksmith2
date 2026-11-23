@@ -2,6 +2,8 @@
 
 #include "blocktex.h"
 #include "sky.h"
+#include "stream.h"
+#include "world_coords.h"
 
 #define TWO_PI 6.28318531f
 
@@ -110,4 +112,12 @@ int sky_quads(const SkyLook *look, MeshVertex out[SKY_QUADS_MAX])
         n += MESH_FACE_VERTS;
     }
     return n;
+}
+
+void sky_fog(int view, float *start, float *end)
+{
+    /* Rings up to view are drawn round the player's chunk, so the edge is
+     * at least view whole chunks away from anywhere in it. */
+    *end = (float)(stream_view(view) * CHUNK_SIZE);
+    *start = SKY_FOG_START * *end;
 }

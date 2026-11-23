@@ -379,7 +379,7 @@ int main(void)
         camera_view(&view, &cam);
         mat4_mul(&mvp, &proj, &view);
         gpu_frame_begin();
-        skydraw(s_daytime, &cam, &proj);
+        skydraw(s_daytime, &cam, &proj, &mvp, s_settings.view);
         meshes_draw(&mvp);
         gpu_frame_end();
         frame_crosshair();

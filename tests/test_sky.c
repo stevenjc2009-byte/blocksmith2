@@ -4,6 +4,7 @@
 #include "blocktex.h"
 #include "mesh.h"
 #include "sky.h"
+#include "stream.h"
 #include "test.h"
 
 /* Row 3-02: day and night (sky.h). */
@@ -263,6 +264,35 @@ static void test_tiles(void)
     CHECK_EQ_INT(TILE_MOON != TILE_SUN, 1);
 }
 
+/* Row 3-04: the world's fog ends where the drawn world's edge can first be,
+ * from anywhere in the player's chunk (rings up to view drawn round it), and
+ * starts SKY_FOG_START of the way there. */
+static void test_fog(void)
+{
+    float s, e, x, near;
+    int v;
+
+    for (v = STREAM_VIEW_MIN; v <= STREAM_VIEW_MAX; v++) {
+        sky_fog(v, &s, &e);
+        CHECK_NEAR(e, v * CHUNK_SIZE, 0.0);
+        CHECK_NEAR(s, SKY_FOG_START * v * CHUNK_SIZE, TOL);
+        CHECK_EQ_INT(s > 0.0f && s < e, 1);
+        /* Across the player's chunk (0 .. CHUNK_SIZE), the nearest edge of
+         * chunks -v .. v is never nearer than the fog's end. */
+        near = 1e9f;
+        for (x = 0.0f; x < CHUNK_SIZE; x += 0.25f) {
+            near = fminf(near, x + v * CHUNK_SIZE);
+            near = fminf(near, (v + 1) * CHUNK_SIZE - x);
+        }
+        CHECK_EQ_INT(near >= e, 1);
+        CHECK_NEAR(near, e, 0.0); /* and the fog is no thicker than it must be */
+    }
+    sky_fog(STREAM_VIEW_MAX + 3, &s, &e); /* out of range: the nearer end */
+    CHECK_NEAR(e, STREAM_VIEW_MAX * CHUNK_SIZE, 0.0);
+    sky_fog(0, &s, &e);
+    CHECK_NEAR(e, STREAM_VIEW_MIN * CHUNK_SIZE, 0.0);
+}
+
 void test_sky(void)
 {
     test_advance();
@@ -271,4 +301,5 @@ void test_sky(void)
     test_smooth();
     test_quads();
     test_tiles();
+    test_fog();
 }

@@ -21,6 +21,8 @@ static shaderProgram_s s_prog;
 static bool s_prog_ready;
 static s8 s_mvp_reg;
 static s8 s_light_reg;
+static s8 s_eye_reg; /* row 3-04: the fog's eye and its start and slope */
+static s8 s_fog_reg;
 static u32 s_clear = CLEAR_RGBA; /* gpu_set_clear() */
 static u32 *s_color_buf; /* VRAM bank A, RGBA8, GPU_TOP_W x GPU_TOP_H */
 static u32 *s_depth_buf; /* VRAM bank B, depth 24 + stencil 8 */
@@ -61,7 +63,9 @@ bool gpu_init(void)
     shaderProgramSetVsh(&s_prog, &s_dvlb->DVLE[0]);
     s_mvp_reg = shaderInstanceGetUniformLocation(s_prog.vertexShader, "mvp");
     s_light_reg = shaderInstanceGetUniformLocation(s_prog.vertexShader, "light");
-    return s_mvp_reg >= 0 && s_light_reg >= 0;
+    s_eye_reg = shaderInstanceGetUniformLocation(s_prog.vertexShader, "eye");
+    s_fog_reg = shaderInstanceGetUniformLocation(s_prog.vertexShader, "fog");
+    return s_mvp_reg >= 0 && s_light_reg >= 0 && s_eye_reg >= 0 && s_fog_reg >= 0;
 }
 
 void gpu_frame_begin(void)
@@ -74,6 +78,7 @@ void gpu_frame_begin(void)
     gpu_state_texture(s_tex, BLOCKTEX_SIZE, BLOCKTEX_SIZE);
     gpu_state_texenv();
     gpu_set_light(1.0f);
+    gpu_set_fog(0.0f, 0.0f, 0.0f, 0.0f);
 }
 
 void gpu_draw(const MeshVertex *verts, int count, const Mat4 *mvp)
@@ -100,6 +105,21 @@ void gpu_set_clear(uint32_t rgba)
 void gpu_set_light(float light)
 {
     gpu_state_uniform_vec4(s_light_reg, light, light, light, 1.0f);
+}
+
+void gpu_set_fog(float ex, float ez, float start, float end)
+{
+    float slope = end > start ? 1.0f / (end - start) : 0.0f;
+
+    gpu_state_uniform_vec4(s_eye_reg, ex, 0.0f, ez, 0.0f);
+    gpu_state_uniform_vec4(s_fog_reg, start, slope, 0.0f, 0.0f);
+}
+
+void gpu_set_fog_color(uint32_t rgba)
+{
+    u32 r = (rgba >> 24) & 0xFF, g = (rgba >> 16) & 0xFF, b = (rgba >> 8) & 0xFF;
+
+    gpu_state_fog_color(0xFF000000u | (b << 16) | (g << 8) | r);
 }
 
 void gpu_frame_end(void)

@@ -27,8 +27,13 @@ void gpu_state_fragment_ops(void);
  * nearest texel, clamped at the edges. */
 void gpu_state_texture(const void *tex, int w, int h);
 
-/* Colour = texture colour times vertex colour. */
+/* Colour = texture colour times vertex colour, then fogged (row 3-04):
+ * mixed towards the fog's colour as the vertex colour's alpha drops from 1
+ * (none) to 0 (all fog). */
 void gpu_state_texenv(void);
+
+/* The fog's colour (row 3-04), 0xAABBGGRR as the combiner holds it. */
+void gpu_state_fog_color(u32 abgr);
 
 /* Vertices come from `verts`: position (3 floats), texture coordinates
  * (2 floats), brightness (3 floats), torch light (1 float, row 3-03),

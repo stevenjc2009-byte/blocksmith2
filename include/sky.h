@@ -54,6 +54,9 @@ typedef struct {
     bool moon_shown;
 } SkyLook;
 
+/* The world's fog (row 3-04) starts this far out of its end (sky_fog()). */
+#define SKY_FOG_START 0.6f
+
 /* The time of day after `seconds` more of play, kept in 0 .. 1. */
 float sky_advance(float t, float seconds);
 
@@ -66,5 +69,10 @@ void sky_look(float t, SkyLook *out);
  * with TILE_SUN in its colour, the moon with TILE_MOON in white. Returns
  * how many vertices were written: 0, 6 or 12 (SKY_QUADS_MAX). */
 int sky_quads(const SkyLook *look, MeshVertex out[SKY_QUADS_MAX]);
+
+/* The world's fog at view distance `view` (row 3-04; stream.h): *end is
+ * the nearest the edge of the drawn world can be, across the ground, so the
+ * edge is always all fog and never seen; *start is SKY_FOG_START of it. */
+void sky_fog(int view, float *start, float *end);
 
 #endif

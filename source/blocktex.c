@@ -137,6 +137,14 @@ static uint32_t torch_texel(int x, int y)
     return rgb(124 + d, 86 + d, 48 + d / 2);
 }
 
+/* The clouds (row 3-04): plain white; their faces are shaded by brightness. */
+static uint32_t cloud_texel(int x, int y)
+{
+    (void)x;
+    (void)y;
+    return rgb(255, 255, 255);
+}
+
 /* A loud check for tiles nothing uses yet. */
 static uint32_t missing_texel(int x, int y)
 {
@@ -153,6 +161,7 @@ static uint32_t tile_texel(int tile, int x, int y)
     case TILE_SUN:        return sun_texel(x, y);
     case TILE_MOON:       return moon_texel(x, y);
     case TILE_TORCH:      return torch_texel(x, y);
+    case TILE_CLOUD:      return cloud_texel(x, y);
     default:              return missing_texel(x, y);
     }
 }

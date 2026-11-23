@@ -3,12 +3,22 @@
 ; light (day and night, row 3-02: 1 by day, less at night) and the vertex's
 ; torch light tinted warm (row 3-03), per channel. By day the world's light
 ; is 1, so torches change nothing.
+;
+; Fog (row 3-04): the colour's alpha is how much of the colour is kept, the
+; rest being the fog's colour (gpu_state.c's combiner stage 1): 1 out to
+; fog.x blocks from the eye across the ground (height not counted), falling
+; evenly to 0 at fog.x + 1 / fog.y. fog.y 0 is no fog.
 
 .fvec mvp[4]
 .fvec light
+.fvec eye
+.fvec fog
 
 .constf ones(1.0, 1.0, 1.0, 1.0)
 .constf warm(1.0, 0.85, 0.6, 1.0)
+.constf flat(1.0, 0.0, 1.0, 0.0)
+.constf zeros(0.0, 0.0, 0.0, 0.0)
+.constf tiny(0.0001, 0.0001, 0.0001, 0.0001)
 
 .out outpos position
 .out outtc0 texcoord0
@@ -33,7 +43,20 @@
 	mul r2, warm, intorch.xxxx
 	max r2, light, r2
 	mul r1.xyz, r2, inclr
-	mov r1.w, ones
+
+	; r4.x: the distance from the eye across the ground
+	add r3, -eye, r0
+	mul r3, flat, r3
+	dp3 r4.x, r3, r3
+	add r4.x, tiny.xxxx, r4.xxxx
+	rsq r4.x, r4.xxxx
+	rcp r4.x, r4.xxxx
+	; how far into the fog (0 .. 1); the colour keeps the rest
+	add r4.x, -fog.xxxx, r4.xxxx
+	mul r4.x, fog.yyyy, r4.xxxx
+	max r4.x, zeros, r4.xxxx
+	min r4.x, ones, r4.xxxx
+	add r1.w, ones, -r4.xxxx
 	mov outclr, r1
 
 	end

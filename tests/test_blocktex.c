@@ -22,6 +22,7 @@ static int blue(uint32_t c) { return (int)((c >> 8) & 0xFF); }
 
 static int is_green(uint32_t c) { return green(c) > red(c) && green(c) > blue(c); }
 static int is_brown(uint32_t c) { return red(c) > green(c) && green(c) > blue(c); }
+static int is_white(uint32_t c) { return c == 0xFFFFFFFFu; }
 
 static int is_grey(uint32_t c)
 {
@@ -137,7 +138,12 @@ void test_blocktex(void)
     check_torch();
 
     for (t = 0; t < TILE_COUNT; t++)
-        CHECK_EQ_INT(colours_in(t) >= 8, 1);
+        if (t != TILE_CLOUD) /* row 3-04: the clouds are flat white */
+            CHECK_EQ_INT(colours_in(t) >= 8, 1);
+    check_tile_all(TILE_CLOUD, is_white, "white");
+    blocktex_tile_uv(TILE_CLOUD, uv); /* tile 7: second row, right end */
+    CHECK_NEAR(uv[0], 0.75 + BLOCKTEX_INSET, TOL);
+    CHECK_NEAR(uv[1], 0.5 + BLOCKTEX_INSET, TOL);
 
     /* An unused tile is the magenta and black check. */
     CHECK_EQ_INT((int)texel(TILE_COUNT, 0, 0), (int)0xFF00FFFFu);

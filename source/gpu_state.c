@@ -95,7 +95,10 @@ void gpu_state_texture(const void *tex, int w, int h)
 void gpu_state_texenv(void)
 {
     /* Stage 0: texture 0 times the vertex colour, for colour and alpha.
-     * Stages 1-5 pass the result on unchanged.
+     * Stage 1 (row 3-04): the fog. The vertex colour's alpha is how much of
+     * the colour is kept (vshader.v.pica): stage 0's colour times that alpha
+     * plus the constant colour, the fog's (gpu_state_fog_color()), times one
+     * minus it; alpha passes on. Stages 2-5 pass the result on unchanged.
      * Words: sources, operands, combiner, constant colour, scale. */
     static const u32 first[5] = {
         GPU_TEVSOURCES(GPU_TEXTURE0, GPU_PRIMARY_COLOR, GPU_PRIMARY_COLOR) |
@@ -103,6 +106,14 @@ void gpu_state_texenv(void)
         0,
         GPU_MODULATE | (GPU_MODULATE << 16),
         0,
+        0,
+    };
+    static const u32 fog[5] = {
+        GPU_TEVSOURCES(GPU_PREVIOUS, GPU_CONSTANT, GPU_PRIMARY_COLOR) |
+            (GPU_TEVSOURCES(GPU_PREVIOUS, GPU_PREVIOUS, GPU_PREVIOUS) << 16),
+        GPU_TEVOPERANDS(0, 0, GPU_TEVOP_RGB_SRC_ALPHA),
+        GPU_INTERPOLATE | (GPU_REPLACE << 16),
+        0xFFFFFFFF,
         0,
     };
     static const u32 rest[5] = { 0x000F000F, 0, 0, 0xFFFFFFFF, 0 };
@@ -116,7 +127,12 @@ void gpu_state_texenv(void)
     GPUCMD_AddWrite(GPUREG_TEXENV_UPDATE_BUFFER, 0);
     GPUCMD_AddWrite(GPUREG_TEXENV_BUFFER_COLOR, 0);
     for (i = 0; i < 6; i++)
-        GPUCMD_AddIncrementalWrites(regs[i], (u32 *)(i == 0 ? first : rest), 5);
+        GPUCMD_AddIncrementalWrites(regs[i], (u32 *)(i == 0 ? first : i == 1 ? fog : rest), 5);
+}
+
+void gpu_state_fog_color(u32 abgr)
+{
+    GPUCMD_AddWrite(GPUREG_TEXENV1_COLOR, abgr);
 }
 
 void gpu_state_vertex_input(const void *verts, unsigned stride)

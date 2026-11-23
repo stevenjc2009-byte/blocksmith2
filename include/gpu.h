@@ -39,6 +39,16 @@ void gpu_set_clear(uint32_t rgba);
  * night, row 3-02). gpu_frame_begin() sets it back to 1. */
 void gpu_set_light(float light);
 
+/* Fog for the draws after it (row 3-04): none out to `start` blocks from
+ * the eye at (ex, ez) across the ground (height not counted), all the fog's
+ * colour from `end` on, an even mix between. `end` not past `start` is no
+ * fog; gpu_frame_begin() turns it off. */
+void gpu_set_fog(float ex, float ez, float start, float end);
+
+/* The fog's colour, 0xRRGGBBAA (the alpha is not used): the sky's colour of
+ * the moment (skydraw.h). */
+void gpu_set_fog_color(uint32_t rgba);
+
 /* Clear to the colour from gpu_set_clear(), run the frame's commands and
  * copy the picture into the top screen's current framebuffer. Call before
  * gfxSwapBuffers(). */

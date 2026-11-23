@@ -42,6 +42,7 @@ int main(void)
     test_ao();
     test_sky();
     test_light();
+    test_cloud();
 
     printf("PC tests: %d checks, %d failed\n", g_checks, g_fails);
     if (g_checks == 0) {
