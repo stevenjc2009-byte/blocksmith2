@@ -8,8 +8,8 @@
 
 #define TOL 1e-4
 #define DT (1.0f / 30.0f)
-#define LO (WORLD_CHUNK_MIN * CHUNK_SIZE)                 /* -32 */
-#define HI ((WORLD_CHUNK_MIN + WORLD_CHUNKS) * CHUNK_SIZE) /* 32 */
+#define LO (SMALL_MIN * CHUNK_SIZE)                 /* -32 */
+#define HI ((SMALL_MIN + SMALL_CHUNKS) * CHUNK_SIZE) /* 32 */
 
 static World s_w;
 /* Over a run: frames that ended with the body inside a block, and the
@@ -20,11 +20,9 @@ static float s_top, s_low;
 /* Stone from y 0 up to and including y top, everywhere. */
 static void flat(int top)
 {
-    int i, j, x, y, z;
+    int x, y, z;
 
-    for (j = 0; j < WORLD_CHUNKS; j++)
-        for (i = 0; i < WORLD_CHUNKS; i++)
-            chunk_clear(&s_w.chunks[j][i]);
+    test_world_cleared(&s_w);
     for (y = 0; y <= top; y++)
         for (z = LO; z < HI; z++)
             for (x = LO; x < HI; x++)
@@ -295,7 +293,7 @@ static void test_hills(void)
     };
     int d, inside = 0, far = 0, climbed = 0, low = 0;
 
-    world_generate(&s_w, 2026u);
+    test_world_small(&s_w, 2026u);
     for (d = 0; d < 8; d++) {
         Player p;
         float x0, z0, y0;

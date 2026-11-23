@@ -9,18 +9,120 @@
 #include "test.h"
 #include "world.h"
 
-#define LO (WORLD_CHUNK_MIN * CHUNK_SIZE)                 /* first block, -32 */
-#define HI ((WORLD_CHUNK_MIN + WORLD_CHUNKS) * CHUNK_SIZE) /* one past the last, 32 */
+#define LO (SMALL_MIN * CHUNK_SIZE)                 /* first block, -32 */
+#define HI ((SMALL_MIN + SMALL_CHUNKS) * CHUNK_SIZE) /* one past the last, 32 */
 
 static World s_w;
 static const uint32_t k_seeds[] = { 2026u, 0xFFFFFFFFu };
+
+#define C(cx, cz) test_slot_chunk(&s_w, (cx), (cz))
+
+void test_world_small(World *w, uint32_t seed)
+{
+    int cx, cz;
+
+    memset(w, 0xA5, sizeof *w); /* whatever was there before must not matter */
+    world_init(w, seed);
+    for (cz = SMALL_MIN; cz < SMALL_MIN + SMALL_CHUNKS; cz++)
+        for (cx = SMALL_MIN; cx < SMALL_MIN + SMALL_CHUNKS; cx++)
+            world_load(w, cx, cz);
+}
+
+void test_world_cleared(World *w)
+{
+    int cx, cz;
+
+    test_world_small(w, 0u);
+    for (cz = SMALL_MIN; cz < SMALL_MIN + SMALL_CHUNKS; cz++)
+        for (cx = SMALL_MIN; cx < SMALL_MIN + SMALL_CHUNKS; cx++)
+            chunk_clear(test_slot_chunk(w, cx, cz));
+}
+
+Chunk *test_slot_chunk(World *w, int cx, int cz)
+{
+    return &w->slots[world_slot(cz)][world_slot(cx)].chunk;
+}
+
+static void test_slots(void)
+{
+    CHECK_EQ_INT(world_slot(0), 0);
+    CHECK_EQ_INT(world_slot(8), 8);
+    CHECK_EQ_INT(world_slot(9), 0);
+    CHECK_EQ_INT(world_slot(10), 1);
+    CHECK_EQ_INT(world_slot(-1), 8);
+    CHECK_EQ_INT(world_slot(-9), 0);
+    CHECK_EQ_INT(world_slot(-10), 8);
+    CHECK_EQ_INT(world_slot(62501), 62501 % 9);
+    CHECK_EQ_INT(world_slot(-62501), 9 - 62501 % 9);
+    CHECK_EQ_INT(world_slot(-2147483647 - 1), 7);
+    CHECK_EQ_INT(world_slot(2147483647), 1);
+}
+
+/* Loading, putting away, a chunk taking another's slot, and what reads and
+ * writes do where nothing is loaded. */
+static void test_load(void)
+{
+    static Chunk c;
+    const Chunk *nb[NB_COUNT];
+    int i, j, loaded = 0;
+
+    memset(&s_w, 0xA5, sizeof s_w);
+    world_init(&s_w, 77u);
+    for (j = 0; j < WORLD_SLOTS; j++)
+        for (i = 0; i < WORLD_SLOTS; i++)
+            loaded += s_w.slots[j][i].loaded;
+    CHECK_EQ_INT(loaded, 0);
+    CHECK_EQ_INT(world_chunk(&s_w, 0, 0) == NULL, 1);
+    CHECK_EQ_INT(world_get(&s_w, 3, 0, 3), BLOCK_AIR);
+    world_set(&s_w, 3, 0, 3, BLOCK_DIRT); /* ignored: nothing loaded */
+    CHECK_EQ_INT(world_break(&s_w, 3, 5, 3), 0);
+
+    world_load(&s_w, 5, -3);
+    terrain_fill_chunk(&c, 77u, 5, -3);
+    CHECK_EQ_INT(world_chunk(&s_w, 5, -3) == C(5, -3), 1);
+    CHECK_EQ_INT(memcmp(world_chunk(&s_w, 5, -3), &c, sizeof c), 0);
+    CHECK_EQ_INT(world_get(&s_w, 5 * CHUNK_SIZE, 0, -3 * CHUNK_SIZE), BLOCK_STONE);
+    /* Chunk (14, -3) shares the slot: loading it puts (5, -3) away. */
+    world_load(&s_w, 14, -3);
+    terrain_fill_chunk(&c, 77u, 14, -3);
+    CHECK_EQ_INT(world_chunk(&s_w, 5, -3) == NULL, 1);
+    CHECK_EQ_INT(world_chunk(&s_w, 14, -3) == C(5, -3), 1);
+    CHECK_EQ_INT(memcmp(world_chunk(&s_w, 14, -3), &c, sizeof c), 0);
+    CHECK_EQ_INT(world_get(&s_w, 5 * CHUNK_SIZE, 0, -3 * CHUNK_SIZE), BLOCK_AIR);
+    /* Putting away a chunk that is not there leaves the slot alone. */
+    world_unload(&s_w, 5, -3);
+    world_unload(&s_w, 14, 6);
+    CHECK_EQ_INT(world_chunk(&s_w, 14, -3) != NULL, 1);
+    world_unload(&s_w, 14, -3);
+    CHECK_EQ_INT(world_chunk(&s_w, 14, -3) == NULL, 1);
+    CHECK_EQ_INT(world_get(&s_w, 14 * CHUNK_SIZE, 0, -3 * CHUNK_SIZE), BLOCK_AIR);
+    world_set(&s_w, 14 * CHUNK_SIZE, 100, -3 * CHUNK_SIZE, BLOCK_STONE);
+    world_load(&s_w, 14, -3); /* the write above went nowhere */
+    CHECK_EQ_INT(memcmp(world_chunk(&s_w, 14, -3), &c, sizeof c), 0);
+
+    /* A neighbour's slot holding some other chunk is not a neighbour. */
+    world_load(&s_w, 0, 0);
+    world_load(&s_w, 10, 0); /* slot of chunk (1, 0) */
+    world_load(&s_w, -1, 0);
+    world_load(&s_w, 0, 10); /* slot of chunk (0, 1) */
+    CHECK_EQ_INT(world_chunk(&s_w, 0, 0) == C(0, 0), 1);
+    world_neighbours(&s_w, 0, 0, nb);
+    CHECK_EQ_INT(nb[NB_POS_X] == NULL, 1);
+    CHECK_EQ_INT(nb[NB_NEG_X] == C(-1, 0), 1);
+    CHECK_EQ_INT(nb[NB_POS_Z] == NULL, 1);
+    CHECK_EQ_INT(nb[NB_NEG_Z] == NULL, 1);
+    CHECK_EQ_INT(world_get(&s_w, CHUNK_SIZE, 0, 0), BLOCK_AIR);
+    CHECK_EQ_INT(world_get(&s_w, 10 * CHUNK_SIZE, 0, 0), BLOCK_STONE);
+    CHECK_EQ_INT(world_get(&s_w, 0, 0, CHUNK_SIZE), BLOCK_AIR);
+    CHECK_EQ_INT(world_get(&s_w, 0, 0, 10 * CHUNK_SIZE), BLOCK_STONE);
+}
 
 static void test_generate(uint32_t seed)
 {
     static Chunk c;
     int x, z, cx, cz, wrong = 0, chunks_wrong = 0;
 
-    world_generate(&s_w, seed);
+    test_world_small(&s_w, seed);
     CHECK_EQ_INT((int)(s_w.seed == seed), 1);
     for (z = LO; z < HI; z++)
         for (x = LO; x < HI; x++) {
@@ -32,8 +134,8 @@ static void test_generate(uint32_t seed)
             wrong += world_get(&s_w, x, 0, z) != BLOCK_STONE;
         }
     CHECK_EQ_INT(wrong, 0);
-    for (cz = WORLD_CHUNK_MIN; cz < WORLD_CHUNK_MIN + WORLD_CHUNKS; cz++)
-        for (cx = WORLD_CHUNK_MIN; cx < WORLD_CHUNK_MIN + WORLD_CHUNKS; cx++) {
+    for (cz = SMALL_MIN; cz < SMALL_MIN + SMALL_CHUNKS; cz++)
+        for (cx = SMALL_MIN; cx < SMALL_MIN + SMALL_CHUNKS; cx++) {
             const Chunk *got = world_chunk(&s_w, cx, cz);
 
             terrain_fill_chunk(&c, seed, cx, cz);
@@ -54,13 +156,13 @@ static void test_edges(void)
     CHECK_EQ_INT(world_get(&s_w, 0, -1, 0), BLOCK_AIR);
     CHECK_EQ_INT(world_get(&s_w, 0, WORLD_HEIGHT, 0), BLOCK_AIR);
 
-    CHECK_EQ_INT(world_chunk(&s_w, WORLD_CHUNK_MIN, WORLD_CHUNK_MIN) == &s_w.chunks[0][0], 1);
-    CHECK_EQ_INT(world_chunk(&s_w, WORLD_CHUNK_MIN + 3, WORLD_CHUNK_MIN) == &s_w.chunks[0][3], 1);
-    CHECK_EQ_INT(world_chunk(&s_w, WORLD_CHUNK_MIN, WORLD_CHUNK_MIN + 3) == &s_w.chunks[3][0], 1);
-    CHECK_EQ_INT(world_chunk(&s_w, WORLD_CHUNK_MIN - 1, 0) == NULL, 1);
-    CHECK_EQ_INT(world_chunk(&s_w, WORLD_CHUNK_MIN + WORLD_CHUNKS, 0) == NULL, 1);
-    CHECK_EQ_INT(world_chunk(&s_w, 0, WORLD_CHUNK_MIN - 1) == NULL, 1);
-    CHECK_EQ_INT(world_chunk(&s_w, 0, WORLD_CHUNK_MIN + WORLD_CHUNKS) == NULL, 1);
+    CHECK_EQ_INT(world_chunk(&s_w, SMALL_MIN, SMALL_MIN) == C(SMALL_MIN, SMALL_MIN), 1);
+    CHECK_EQ_INT(world_chunk(&s_w, SMALL_MIN + 3, SMALL_MIN) == C(SMALL_MIN + 3, SMALL_MIN), 1);
+    CHECK_EQ_INT(world_chunk(&s_w, SMALL_MIN, SMALL_MIN + 3) == C(SMALL_MIN, SMALL_MIN + 3), 1);
+    CHECK_EQ_INT(world_chunk(&s_w, SMALL_MIN - 1, 0) == NULL, 1);
+    CHECK_EQ_INT(world_chunk(&s_w, SMALL_MIN + SMALL_CHUNKS, 0) == NULL, 1);
+    CHECK_EQ_INT(world_chunk(&s_w, 0, SMALL_MIN - 1) == NULL, 1);
+    CHECK_EQ_INT(world_chunk(&s_w, 0, SMALL_MIN + SMALL_CHUNKS) == NULL, 1);
 }
 
 /* world_set changes only the one block it names, in the right chunk, and
@@ -73,8 +175,8 @@ static void test_set(void)
     world_set(&s_w, HI - 1, 101, -17, BLOCK_DIRT);
     CHECK_EQ_INT(world_get(&s_w, LO, 100, LO), BLOCK_STONE);
     CHECK_EQ_INT(world_get(&s_w, HI - 1, 101, -17), BLOCK_DIRT);
-    CHECK_EQ_INT(chunk_get(&s_w.chunks[0][0], 0, 100, 0), BLOCK_STONE);
-    CHECK_EQ_INT(chunk_get(&s_w.chunks[0][3], CHUNK_SIZE - 1, 101, CHUNK_SIZE - 1), BLOCK_DIRT);
+    CHECK_EQ_INT(chunk_get(C(SMALL_MIN, SMALL_MIN), 0, 100, 0), BLOCK_STONE);
+    CHECK_EQ_INT(chunk_get(C(SMALL_MIN + 3, SMALL_MIN), CHUNK_SIZE - 1, 101, CHUNK_SIZE - 1), BLOCK_DIRT);
     CHECK_EQ_INT(world_get(&s_w, LO + 1, 100, LO), BLOCK_AIR);
     CHECK_EQ_INT(world_get(&s_w, HI - 1, 101, -16), BLOCK_AIR);
     world_set(&s_w, LO, 100, LO, BLOCK_AIR);
@@ -89,24 +191,24 @@ static void test_neighbours(void)
 {
     const Chunk *nb[NB_COUNT];
 
-    /* Chunk (-1, -1) is chunks[1][1]: all four neighbours are there. */
+    /* Chunk (-1, -1): all four neighbours are there. */
     world_neighbours(&s_w, -1, -1, nb);
-    CHECK_EQ_INT(nb[NB_POS_X] == &s_w.chunks[1][2], 1);
-    CHECK_EQ_INT(nb[NB_NEG_X] == &s_w.chunks[1][0], 1);
-    CHECK_EQ_INT(nb[NB_POS_Z] == &s_w.chunks[2][1], 1);
-    CHECK_EQ_INT(nb[NB_NEG_Z] == &s_w.chunks[0][1], 1);
+    CHECK_EQ_INT(nb[NB_POS_X] == C(0, -1), 1);
+    CHECK_EQ_INT(nb[NB_NEG_X] == C(-2, -1), 1);
+    CHECK_EQ_INT(nb[NB_POS_Z] == C(-1, 0), 1);
+    CHECK_EQ_INT(nb[NB_NEG_Z] == C(-1, -2), 1);
     /* North-west corner (-2, -2): nothing west or north. */
     world_neighbours(&s_w, -2, -2, nb);
-    CHECK_EQ_INT(nb[NB_POS_X] == &s_w.chunks[0][1], 1);
+    CHECK_EQ_INT(nb[NB_POS_X] == C(-1, -2), 1);
     CHECK_EQ_INT(nb[NB_NEG_X] == NULL, 1);
-    CHECK_EQ_INT(nb[NB_POS_Z] == &s_w.chunks[1][0], 1);
+    CHECK_EQ_INT(nb[NB_POS_Z] == C(-2, -1), 1);
     CHECK_EQ_INT(nb[NB_NEG_Z] == NULL, 1);
     /* South-east corner (1, 1): nothing east or south. */
     world_neighbours(&s_w, 1, 1, nb);
     CHECK_EQ_INT(nb[NB_POS_X] == NULL, 1);
-    CHECK_EQ_INT(nb[NB_NEG_X] == &s_w.chunks[3][2], 1);
+    CHECK_EQ_INT(nb[NB_NEG_X] == C(0, 1), 1);
     CHECK_EQ_INT(nb[NB_POS_Z] == NULL, 1);
-    CHECK_EQ_INT(nb[NB_NEG_Z] == &s_w.chunks[2][3], 1);
+    CHECK_EQ_INT(nb[NB_NEG_Z] == C(1, 0), 1);
 }
 
 /* Separate reference: is world cell (x, y, z) solid, for face hiding? */
@@ -155,8 +257,8 @@ static void test_meshes(uint32_t seed)
     static const Chunk *const k_none[NB_COUNT] = { NULL, NULL, NULL, NULL };
     int cx, cz, x, z, wrong = 0, with_nb = 0, alone = 0, seam = 0;
 
-    for (cz = WORLD_CHUNK_MIN; cz < WORLD_CHUNK_MIN + WORLD_CHUNKS; cz++)
-        for (cx = WORLD_CHUNK_MIN; cx < WORLD_CHUNK_MIN + WORLD_CHUNKS; cx++) {
+    for (cz = SMALL_MIN; cz < SMALL_MIN + SMALL_CHUNKS; cz++)
+        for (cx = SMALL_MIN; cx < SMALL_MIN + SMALL_CHUNKS; cx++) {
             const Chunk *c = world_chunk(&s_w, cx, cz);
             const Chunk *nb[NB_COUNT];
             int faces, n, rn;
@@ -197,6 +299,8 @@ void test_world(void)
 {
     int i;
 
+    test_slots();
+    test_load();
     for (i = 0; i < (int)(sizeof k_seeds / sizeof k_seeds[0]); i++) {
         test_generate(k_seeds[i]);
         test_edges();

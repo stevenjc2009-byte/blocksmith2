@@ -17,7 +17,7 @@ static void flat(int top)
 {
     int x, y, z;
 
-    memset(&s_w, 0, sizeof s_w);
+    test_world_cleared(&s_w);
     for (x = -32; x < 32; x++)
         for (z = -32; z < 32; z++)
             for (y = 0; y <= top; y++)
@@ -156,7 +156,7 @@ static void test_random(void)
 {
     int n, hits = 0, misses = 0, bad_hit = 0, bad_early = 0, bad_miss = 0, flats = 0;
 
-    world_generate(&s_w, 2026u);
+    test_world_small(&s_w, 2026u);
     for (n = 0; n < 3000; n++) {
         float ox = -30.0f + 60.0f * rnd(), oy = 58.0f + 16.0f * rnd(), oz = -30.0f + 60.0f * rnd();
         float dx = rnd() * 2.0f - 1.0f, dy = rnd() * 2.0f - 1.0f, dz = rnd() * 2.0f - 1.0f;

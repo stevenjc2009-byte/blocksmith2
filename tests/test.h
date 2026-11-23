@@ -4,7 +4,10 @@
 /* Tiny PC test helpers. No libraries: every check is counted, and the run
  * fails if any check fails or if no checks ran at all. */
 
+#include <stdint.h>
 #include <stdio.h>
+
+#include "world.h"
 
 extern int g_checks;
 extern int g_fails;
@@ -32,6 +35,19 @@ extern int g_fails;
         }                                                                           \
     } while (0)
 
+/* The small test world most tests use: chunks SMALL_MIN to
+ * SMALL_MIN + SMALL_CHUNKS - 1 on x and z (blocks -32 to 31) loaded with the
+ * seed's ground, nothing else. In test_world.c. */
+#define SMALL_MIN (-2)
+#define SMALL_CHUNKS 4
+void test_world_small(World *w, uint32_t seed);
+
+/* The small test world with every block air (test_world.c). */
+void test_world_cleared(World *w);
+
+/* Chunk (cx, cz)'s slot in w, loaded or not (test_world.c). */
+Chunk *test_slot_chunk(World *w, int cx, int cz);
+
 /* One function per test file, called from test_main.c. */
 void test_world_coords(void);
 void test_framebuffer(void);
@@ -44,6 +60,7 @@ void test_camera(void);
 void test_chunk(void);
 void test_terrain(void);
 void test_world(void);
+void test_stream(void);
 void test_walk(void);
 void test_player(void);
 void test_raycast(void);

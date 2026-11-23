@@ -22,8 +22,8 @@ bool place_hits_player(const Player *p, int x, int y, int z);
 
 /* Put block b in the spot the hit's face opens onto, written to *x, *y, *z.
  * False, and nothing changes, if b is air or not a block, if that spot is
- * outside the world or not air, or if the new block would overlap the
- * player. */
+ * above or below the world, in a chunk that is not loaded or not air, or
+ * if the new block would overlap the player. */
 bool place_block(World *w, const Player *p, const RayHit *hit, int b, int *x, int *y, int *z);
 
 #endif

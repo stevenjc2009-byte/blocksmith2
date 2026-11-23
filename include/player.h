@@ -11,8 +11,8 @@
  *
  * The body is a box 0.6 blocks wide and deep and 1.8 tall, standing on
  * (x, y, z): y is the feet, x and z the middle. The eye is 1.62 up. Below
- * the world counts as solid, and so does everything past the world's sides
- * (an invisible wall, so nobody walks off the edge); above it is air. */
+ * the world counts as solid, and so does every chunk that is not loaded
+ * (a wall, so nobody walks into ground not made yet); above it is air. */
 
 #define PLAYER_HALF 0.3f       /* half the width and depth */
 #define PLAYER_HEIGHT 1.8f

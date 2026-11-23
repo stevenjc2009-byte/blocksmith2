@@ -1,4 +1,5 @@
 #include <stddef.h>
+#include <string.h>
 
 #include "block.h"
 #include "chunk_mesh.h"
@@ -42,11 +43,60 @@ bool chunk_face_visible(const Chunk *c, const Chunk *const nb[NB_COUNT],
     return !solid_at(c, nb, x + k_step[face][0], y + k_step[face][1], z + k_step[face][2]);
 }
 
+_Static_assert(BLOCK_AIR == 0, "solid_top() compares layers against zero bytes");
+
+/* The first layer, from the bottom, with any air in it (WORLD_HEIGHT if
+ * none; 0 for a missing chunk, which is all air). */
+static int first_air_layer(const Chunk *c)
+{
+    int y;
+
+    if (c == NULL)
+        return 0;
+    for (y = 0; y < WORLD_HEIGHT; y++)
+        if (memchr(c->blocks[y], BLOCK_AIR, sizeof c->blocks[y]) != NULL)
+            break;
+    return y;
+}
+
+/* One above the highest layer with any block in it (0 if none). */
+static int solid_top(const Chunk *c)
+{
+    static const uint8_t k_air[CHUNK_SIZE][CHUNK_SIZE];
+    int y;
+
+    for (y = WORLD_HEIGHT; y > 0; y--)
+        if (memcmp(c->blocks[y - 1], k_air, sizeof k_air) != 0)
+            break;
+    return y;
+}
+
+/* The layers [*lo, *hi) that can hold a seen face, so a mesh need not walk
+ * all WORLD_HEIGHT of them (row 2-01: one mesh a frame must fit in a
+ * 30-a-second frame). Above *hi there are no blocks. Below *lo every block
+ * is buried: the layers under it, at it and over it in this chunk are full,
+ * and so is its layer in all four neighbours (a missing neighbour is air,
+ * which stops the skipping). */
+static void face_layers(const Chunk *c, const Chunk *const nb[NB_COUNT], int *lo, int *hi)
+{
+    int low = first_air_layer(c) - 1, i;
+
+    for (i = 0; i < NB_COUNT; i++) {
+        int f = first_air_layer(nb ? nb[i] : NULL);
+
+        if (f < low)
+            low = f;
+    }
+    *lo = low < 0 ? 0 : low;
+    *hi = solid_top(c);
+}
+
 int chunk_mesh_count(const Chunk *c, const Chunk *const nb[NB_COUNT])
 {
-    int x, y, z, f, n = 0;
+    int x, y, z, f, n = 0, lo, hi;
 
-    for (y = 0; y < WORLD_HEIGHT; y++)
+    face_layers(c, nb, &lo, &hi);
+    for (y = lo; y < hi; y++)
         for (z = 0; z < CHUNK_SIZE; z++)
             for (x = 0; x < CHUNK_SIZE; x++) {
                 if (c->blocks[y][z][x] == BLOCK_AIR)
@@ -60,9 +110,10 @@ int chunk_mesh_count(const Chunk *c, const Chunk *const nb[NB_COUNT])
 int chunk_mesh_build(const Chunk *c, const Chunk *const nb[NB_COUNT], float ox, float oz,
                      MeshVertex *out, int max_verts)
 {
-    int x, y, z, f, n = 0;
+    int x, y, z, f, n = 0, lo, hi;
 
-    for (y = 0; y < WORLD_HEIGHT; y++)
+    face_layers(c, nb, &lo, &hi);
+    for (y = lo; y < hi; y++)
         for (z = 0; z < CHUNK_SIZE; z++)
             for (x = 0; x < CHUNK_SIZE; x++) {
                 int b = c->blocks[y][z][x];

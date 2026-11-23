@@ -15,7 +15,7 @@ static void flat(int top)
 {
     int x, y, z;
 
-    memset(&s_w, 0, sizeof s_w);
+    test_world_cleared(&s_w);
     for (x = -32; x < 32; x++)
         for (z = -32; z < 32; z++)
             for (y = 0; y <= top; y++)

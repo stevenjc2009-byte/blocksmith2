@@ -50,7 +50,7 @@ CORE_SOURCES	:=	source/world_coords.c source/framebuffer.c source/mat4.c \
 			source/texswizzle.c source/blocktex.c source/block.c source/mesh.c \
 			source/look.c source/camera.c source/chunk.c source/chunk_mesh.c source/terrain.c source/world.c \
 			source/walk.c source/player.c source/raycast.c source/place.c source/hotbar.c \
-			source/font.c source/fps.c
+			source/font.c source/fps.c source/stream.c
 TEST_SOURCES	:=	$(wildcard tests/*.c)
 
 #---------------------------------------------------------------------------------

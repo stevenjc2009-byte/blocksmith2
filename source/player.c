@@ -24,7 +24,7 @@ bool player_solid(const World *w, int x, int y, int z)
     if (y >= WORLD_HEIGHT)
         return false;
     if (world_chunk(w, block_to_chunk(x), block_to_chunk(z)) == NULL)
-        return true; /* past the world's side: an invisible wall */
+        return true; /* not loaded: a wall */
     return world_get(w, x, y, z) != BLOCK_AIR;
 }
 

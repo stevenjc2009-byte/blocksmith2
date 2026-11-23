@@ -1,4 +1,5 @@
 #include <3ds.h>
+#include <math.h>
 
 #include "block.h"
 #include "blocktex.h"
@@ -15,15 +16,19 @@
 #include "place.h"
 #include "player.h"
 #include "raycast.h"
+#include "stream.h"
 #include "walk.h"
 #include "world.h"
 
-/* Roadmap row 1-11: 30 frames a second. The player stands in the middle of the
- * small world (4 x 4 chunks of gentle hills from a fixed seed, one mesh per
- * chunk) facing north. The Circle Pad walks, by where the camera faces;
- * gravity holds the player on the ground, blocks stop them, and walking into
- * a one-block step hops up it (no jump button). The world's sides are an
- * invisible wall. A B X Y and the C-stick look around. A crosshair marks the
+/* Roadmap row 2-01: the endless world. The player starts in chunk (0, 0) of
+ * gentle hills from a fixed seed, facing north. The ground is made as the
+ * player walks (stream.h): the 7 x 7 chunks round the player's chunk are
+ * drawn, one mesh each, and one more ring round them is kept; one chunk or
+ * mesh is made each frame, nearest first, and chunks further away are put
+ * away (changes to them are lost until saving, roadmap row 2-04). The Circle
+ * Pad walks, by where the camera faces; gravity holds the player on the
+ * ground, blocks stop them, and walking into a one-block step hops up it (no
+ * jump button). A B X Y and the C-stick look around. A crosshair marks the
  * middle of the top screen; R breaks the block under it, up to 5 blocks
  * away, at once (timed mining comes with tools, kickoff P-4), and L puts the
  * chosen block against the face looked at, never inside the player. The
@@ -38,8 +43,12 @@
 #define WORLD_SEED 2026u /* typed and random seeds come later (kickoff W-10) */
 
 static World s_world;
-static MeshVertex *s_mesh[WORLD_CHUNKS][WORLD_CHUNKS];
-static int s_verts[WORLD_CHUNKS][WORLD_CHUNKS];
+/* One mesh per world slot, for the chunk in that slot (world.h);
+ * s_meshed[j][i] says slot [j][i]'s chunk has its mesh built, which can be
+ * empty (s_mesh NULL). */
+static MeshVertex *s_mesh[WORLD_SLOTS][WORLD_SLOTS];
+static int s_verts[WORLD_SLOTS][WORLD_SLOTS];
+static bool s_meshed[WORLD_SLOTS][WORLD_SLOTS];
 static uint32_t s_atlas[BLOCKTEX_SIZE * BLOCKTEX_SIZE]; /* the hotbar's icons */
 
 static void free_mesh(int i, int j)
@@ -49,30 +58,34 @@ static void free_mesh(int i, int j)
         s_mesh[j][i] = NULL;
     }
     s_verts[j][i] = 0;
+    s_meshed[j][i] = false;
 }
 
 static void free_meshes(void)
 {
     int i, j;
 
-    for (j = 0; j < WORLD_CHUNKS; j++)
-        for (i = 0; i < WORLD_CHUNKS; i++)
+    for (j = 0; j < WORLD_SLOTS; j++)
+        for (i = 0; i < WORLD_SLOTS; i++)
             free_mesh(i, j);
 }
 
-/* (Re)build the mesh of chunk [j][i] in linear memory for the GPU. Only
- * between frames: gpu_frame_end() has waited for the GPU, so the old mesh is
- * no longer being read. False if out of memory. */
-static bool build_mesh(int i, int j)
+/* (Re)build the mesh of loaded chunk (cx, cz) in linear memory for the GPU.
+ * Only between frames: gpu_frame_end() has waited for the GPU, so the old
+ * mesh is no longer being read. False if out of memory. */
+static bool build_mesh(int cx, int cz)
 {
-    int cx = WORLD_CHUNK_MIN + i, cz = WORLD_CHUNK_MIN + j;
+    int i = world_slot(cx), j = world_slot(cz);
     const Chunk *c = world_chunk(&s_world, cx, cz);
     const Chunk *nb[NB_COUNT];
     int faces;
 
     free_mesh(i, j);
+    if (c == NULL)
+        return true;
     world_neighbours(&s_world, cx, cz, nb);
     faces = chunk_mesh_count(c, nb);
+    s_meshed[j][i] = true;
     if (faces == 0)
         return true;
     s_mesh[j][i] = linearAlloc(faces * MESH_FACE_VERTS * sizeof(MeshVertex));
@@ -88,28 +101,46 @@ static bool build_mesh(int i, int j)
     return true;
 }
 
-/* One mesh per chunk. False if out of memory. */
-static bool build_meshes(void)
+#define STREAM_ALL (-1)
+
+/* Keep the world round the player's chunk (pcx, pcz) (stream.h): put away
+ * the far chunks and the meshes that should go, then run up to jobs jobs
+ * (STREAM_ALL: until none are left). Between frames only, like
+ * build_mesh(). False if out of memory for a mesh. */
+static bool stream_frame(int pcx, int pcz, int jobs)
 {
+    StreamJob job;
     int i, j;
 
-    for (j = 0; j < WORLD_CHUNKS; j++)
-        for (i = 0; i < WORLD_CHUNKS; i++)
-            if (!build_mesh(i, j))
-                return false;
+    stream_put_away(&s_world, pcx, pcz);
+    for (j = 0; j < WORLD_SLOTS; j++)
+        for (i = 0; i < WORLD_SLOTS; i++)
+            if (s_meshed[j][i] && !stream_keep_mesh(&s_world, i, j, pcx, pcz))
+                free_mesh(i, j);
+    while ((jobs == STREAM_ALL || jobs-- > 0) &&
+           stream_next(&s_world, s_meshed, pcx, pcz, &job)) {
+        if (job.kind == STREAM_LOAD) {
+            free_mesh(world_slot(job.cx), world_slot(job.cz));
+            world_load(&s_world, job.cx, job.cz);
+        } else if (!build_mesh(job.cx, job.cz)) {
+            return false;
+        }
+    }
     return true;
 }
 
-/* Rebuild the meshes a change to block column (x, z) touches. False if out
- * of memory. */
+/* Rebuild the built meshes a change to block column (x, z) touches (a chunk
+ * still waiting for its mesh gets the change when it is built). False if
+ * out of memory. */
 static bool rebuild_around(int x, int z)
 {
     int touched[3][2];
     int n, k;
 
-    n = world_touched_chunks(x, z, touched);
+    n = world_touched_chunks(&s_world, x, z, touched);
     for (k = 0; k < n; k++)
-        if (!build_mesh(touched[k][0] - WORLD_CHUNK_MIN, touched[k][1] - WORLD_CHUNK_MIN))
+        if (s_meshed[world_slot(touched[k][1])][world_slot(touched[k][0])] &&
+            !build_mesh(touched[k][0], touched[k][1]))
             return false;
     return true;
 }
@@ -214,16 +245,16 @@ int main(void)
     u64 last, paced;
 
     gfxInitDefault();
-    world_generate(&s_world, WORLD_SEED);
-    player_spawn(&player, &s_world, 0, 0);
+    world_init(&s_world, WORLD_SEED);
     blocktex_build(s_atlas);
     hotbar_init(&hotbar);
-    if (!gpu_init() || !build_meshes()) {
+    if (!gpu_init() || !stream_frame(0, 0, STREAM_ALL)) {
         free_meshes();
         gpu_exit();
         gfxExit();
         return 1;
     }
+    player_spawn(&player, &s_world, 0, 0);
     mat4_persp_tilt(&proj, 60.0f * PI / 180.0f, 400.0f / 240.0f, 0.1f, 160.0f);
 
     last = osGetTime();
@@ -256,6 +287,10 @@ int main(void)
         cam.x = player.x;
         cam.y = player.y + PLAYER_EYE;
         cam.z = player.z;
+        /* One new chunk or mesh a frame round where the player now is. */
+        if (!stream_frame(block_to_chunk((int)floorf(player.x)),
+                          block_to_chunk((int)floorf(player.z)), 1))
+            break; /* out of memory for a mesh */
         if ((hidKeysDown() & KEY_R) && !break_looked_at(&cam))
             break; /* out of memory for a mesh */
         if (hidKeysDown() & KEY_TOUCH) {
@@ -273,8 +308,8 @@ int main(void)
         camera_view(&view, &cam);
         mat4_mul(&mvp, &proj, &view);
         gpu_frame_begin();
-        for (j = 0; j < WORLD_CHUNKS; j++)
-            for (i = 0; i < WORLD_CHUNKS; i++)
+        for (j = 0; j < WORLD_SLOTS; j++)
+            for (i = 0; i < WORLD_SLOTS; i++)
                 gpu_draw(s_mesh[j][i], s_verts[j][i], &mvp);
         gpu_frame_end();
         draw_crosshair();

@@ -19,7 +19,7 @@ typedef struct {
 /* Walk the ray from (ox, oy, oz) along (dx, dy, dz) (any length but zero)
  * block by block, up to reach blocks. True, with *hit filled, at the first
  * block that is not air. The block the ray starts in is not checked.
- * Nothing outside the world is ever hit: world_get() says air there. */
+ * Nothing outside a loaded chunk is ever hit: world_get() says air there. */
 bool raycast(const World *w, float ox, float oy, float oz,
              float dx, float dy, float dz, float reach, RayHit *hit);
 

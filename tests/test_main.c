@@ -5,6 +5,7 @@ int g_fails = 0;
 
 int main(void)
 {
+    setvbuf(stdout, NULL, _IONBF, 0); /* a crash after a failed check keeps its line */
     test_world_coords();
     test_framebuffer();
     test_mat4();
@@ -16,6 +17,7 @@ int main(void)
     test_chunk();
     test_terrain();
     test_world();
+    test_stream();
     test_walk();
     test_player();
     test_raycast();

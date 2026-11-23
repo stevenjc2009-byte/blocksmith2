@@ -16,7 +16,7 @@ static void test_break_rules(void)
 {
     int h;
 
-    world_generate(&s_w, 2026u);
+    test_world_small(&s_w, 2026u);
     h = terrain_height(2026u, 0, 0);
     CHECK_EQ_INT(world_break(&s_w, 0, h, 0), 1);            /* the grass on top */
     CHECK_EQ_INT(world_get(&s_w, 0, h, 0), BLOCK_AIR);
@@ -47,7 +47,7 @@ static void check_touched(int x, int z, int n, const int want[][2])
     int got, k;
 
     memset(out, 0x7F, sizeof out);
-    got = world_touched_chunks(x, z, out);
+    got = world_touched_chunks(&s_w, x, z, out);
     CHECK_EQ_INT(got, n);
     for (k = 0; k < n && k < got; k++) {
         CHECK_EQ_INT(out[k][0], want[k][0]);
@@ -97,11 +97,11 @@ typedef struct {
     int n;
 } Built;
 
-static Built s_cache[WORLD_CHUNKS][WORLD_CHUNKS];
+static Built s_cache[SMALL_CHUNKS][SMALL_CHUNKS];
 
 static Built build(int i, int j)
 {
-    int cx = WORLD_CHUNK_MIN + i, cz = WORLD_CHUNK_MIN + j;
+    int cx = SMALL_MIN + i, cz = SMALL_MIN + j;
     const Chunk *nb[NB_COUNT];
     Built b;
     int faces;
@@ -120,8 +120,8 @@ static int stale(void)
 {
     int i, j, bad = 0;
 
-    for (j = 0; j < WORLD_CHUNKS; j++)
-        for (i = 0; i < WORLD_CHUNKS; i++) {
+    for (j = 0; j < SMALL_CHUNKS; j++)
+        for (i = 0; i < SMALL_CHUNKS; i++) {
             Built f = build(i, j);
 
             if (f.n < 0 || f.n != s_cache[j][i].n ||
@@ -144,11 +144,11 @@ static void break_and_rebuild(int x, int y, int z)
 
     if (!world_break(&s_w, x, y, z))
         return;
-    n = world_touched_chunks(x, z, out);
+    n = world_touched_chunks(&s_w, x, z, out);
     for (k = 0; k < n; k++) {
-        int i = out[k][0] - WORLD_CHUNK_MIN, j = out[k][1] - WORLD_CHUNK_MIN;
+        int i = out[k][0] - SMALL_MIN, j = out[k][1] - SMALL_MIN;
 
-        if (i < 0 || i >= WORLD_CHUNKS || j < 0 || j >= WORLD_CHUNKS) {
+        if (i < 0 || i >= SMALL_CHUNKS || j < 0 || j >= SMALL_CHUNKS) {
             s_off_world++;
             continue;
         }
@@ -168,9 +168,9 @@ static void test_rebuild(void)
     };
     int s, i, j, d, before = 0, worst = 0;
 
-    world_generate(&s_w, 2026u);
-    for (j = 0; j < WORLD_CHUNKS; j++)
-        for (i = 0; i < WORLD_CHUNKS; i++)
+    test_world_small(&s_w, 2026u);
+    for (j = 0; j < SMALL_CHUNKS; j++)
+        for (i = 0; i < SMALL_CHUNKS; i++)
             s_cache[j][i] = build(i, j);
     CHECK_EQ_INT(stale(), 0);
 
@@ -194,8 +194,8 @@ static void test_rebuild(void)
     /* Every break happened, so the check above had real work to judge. */
     CHECK_EQ_INT(before, (int)(sizeof spots / sizeof spots[0]) * 5);
 
-    for (j = 0; j < WORLD_CHUNKS; j++)
-        for (i = 0; i < WORLD_CHUNKS; i++)
+    for (j = 0; j < SMALL_CHUNKS; j++)
+        for (i = 0; i < SMALL_CHUNKS; i++)
             free(s_cache[j][i].v);
 }
 
