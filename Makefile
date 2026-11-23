@@ -52,7 +52,7 @@ CORE_SOURCES	:=	source/world_coords.c source/framebuffer.c source/mat4.c \
 			source/walk.c source/player.c source/raycast.c source/place.c source/hotbar.c \
 			source/font.c source/fps.c source/stream.c source/settings.c \
 			source/seed.c source/newworld.c source/save.c source/save_files.c source/saveui.c \
-			source/worldname.c source/save_worlds.c source/worldlist.c
+			source/worldname.c source/save_worlds.c source/worldlist.c source/lidsave.c
 TEST_SOURCES	:=	$(wildcard tests/*.c)
 
 #---------------------------------------------------------------------------------

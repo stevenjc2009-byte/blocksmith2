@@ -5,11 +5,13 @@
 #include "blocktex.h"
 #include "camera.h"
 #include "chunk.h"
+#include "controls.h"
 #include "fps.h"
 #include "frame.h"
 #include "framebuffer.h"
 #include "gpu.h"
 #include "hotbar.h"
+#include "lidsave.h"
 #include "look.h"
 #include "mat4.h"
 #include "meshes.h"
@@ -23,7 +25,7 @@
 #include "walk.h"
 #include "world.h"
 
-/* Roadmap row 2-05: the endless world, a settings screen, a seed for each
+/* Roadmap row 2-06: the endless world, a settings screen, a seed for each
  * new world, saving, and a list of the saved worlds. With worlds saved the
  * game starts on the world list (worldlist.h), over the sky blue top
  * screen, the world played last chosen: A (or OPEN) opens the chosen world
@@ -57,12 +59,15 @@
  * change touches are rebuilt. The bottom screen is grass green with nine
  * block slots along its foot (grass, dirt, stone, then empty); tapping a
  * slot chooses it. SAVE in its top-right corner saves the world (saveui.h),
- * and so does an autosave every 3 minutes; a message says how it went. The
+ * and so does an autosave every 3 minutes, closing the lid and HOME
+ * (lidsave.h); a message says how it went, after the lid or HOME once the
+ * game is back. The
  * game shows a new picture every second screen refresh, 30 a second, and a
  * counter in the bottom screen's top-left corner shows the frames a second
  * (its settings switch comes in roadmap 0.7). START saves and quits; on the
  * start screens it just quits. The chunk meshes are in meshes.c, the start
- * screens' loop in start.c, frame pacing and the crosshair in frame.c. */
+ * screens' loop in start.c, frame pacing and the crosshair in frame.c, the
+ * Circle Pad and look keys read in controls.c. */
 
 #define PI 3.14159265f
 
@@ -74,6 +79,7 @@ static bool s_saving;       /* s_save is open: the world has a folder */
 static SaveSettings s_kept; /* settings.dat, as read or last written */
 static SaveUiMessage s_msg; /* the save message, shown until s_msg_until */
 static u64 s_msg_until;
+static LidSave s_lid; /* the lid closing or HOME saves the game */
 
 /* The block under the crosshair, if one is in reach. */
 static bool looked_at(const Camera *cam, RayHit *hit)
@@ -163,28 +169,19 @@ static void show_saved(bool ok)
     s_msg_until = osGetTime() + SAVEUI_MSG_MS;
 }
 
-/* Walking speed from the Circle Pad, by where the camera faces. */
-static void read_walk(const Camera *cam, float *vx, float *vz)
+/* The game as it stands, for lidsave.h to save when the lid closes or HOME
+ * is pressed (libctru calls it from aptMainLoop(), between frames). */
+typedef struct {
+    const Player *p;
+    const Camera *cam;
+    const Hotbar *hb;
+} Live;
+
+static bool save_live(void *ctx)
 {
-    circlePosition pad = { 0, 0 };
+    const Live *l = ctx;
 
-    hidCircleRead(&pad);
-    walk_velocity(pad.dx, pad.dy, cam->yaw, vx, vz);
-}
-
-/* The look keys held, leaving out those in ignore. */
-static void read_look(LookInput *in, u32 ignore)
-{
-    u32 held = hidKeysHeld() & ~ignore;
-    circlePosition cs = { 0, 0 };
-
-    hidCstickRead(&cs);
-    in->up = (held & KEY_X) != 0;
-    in->down = (held & KEY_B) != 0;
-    in->left = (held & KEY_Y) != 0;
-    in->right = (held & KEY_A) != 0;
-    in->cx = cs.dx;
-    in->cy = cs.dy;
+    return save_game(l->p, l->cam, l->hb);
 }
 
 int main(void)
@@ -193,6 +190,7 @@ int main(void)
     Camera cam = { 0.0f, 0.0f, 0.0f, 0.0f, -10.0f * PI / 180.0f };
     Player player;
     Hotbar hotbar;
+    Live live = { &player, &cam, &hotbar };
     FpsCounter fps;
     Mat4 proj;
     SaveInfo info;
@@ -200,7 +198,7 @@ int main(void)
     uint32_t seed;
     u32 stale;
     StartChoice start;
-    bool cont = false;
+    bool cont = false, ok;
     int k, world = 0, pcx = 0, pcz = 0;
 
     gfxInitDefault();
@@ -285,6 +283,8 @@ int main(void)
     fps_init(&fps, paced);
     hidScanInput();
     stale = hidKeysHeld();
+    lidsave_init(&s_lid, save_live, &live);
+    lidsave_hook_start(&s_lid);
     while (aptMainLoop()) {
         LookInput in;
         Mat4 view, mvp;
@@ -355,6 +355,10 @@ int main(void)
             show_saved(save_game(&player, &cam, &hotbar));
             saved_at = osGetTime();
         }
+        if (lidsave_back(&s_lid, &ok)) { /* back from the lid closed or HOME */
+            show_saved(ok);
+            saved_at = osGetTime();
+        }
         if (s_world.lost) { /* a changed chunk put away could not be saved */
             s_world.lost = 0;
             show_saved(false);
@@ -372,6 +376,7 @@ int main(void)
         frame_end(&fps, &paced);
     }
 
+    lidsave_hook_stop();
     save_game(&player, &cam, &hotbar); /* START, or the system closing the game */
     save_world_close(&s_save);
     meshes_free();

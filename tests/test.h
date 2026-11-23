@@ -81,5 +81,6 @@ void test_worldname(void);
 void test_save_names(void);
 void test_worldlist(void);
 void test_worldlist_draw(void); /* test_worldlist_draw.c, called by test_worldlist() */
+void test_lidsave(void);
 
 #endif
