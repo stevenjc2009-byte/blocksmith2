@@ -5,12 +5,14 @@
 #include "font.h"
 #include "framebuffer.h"
 #include "newworld.h"
+#include "saveui.h"
 #include "settings.h"
 #include "test.h"
 #include "worldlist.h"
 
 /* Row 2-05: the world list and its delete screen as drawn (split from
- * test_worldlist.c, which checks the choosing, rows and buttons). */
+ * test_worldlist.c, which checks the choosing, rows and buttons); row
+ * 2-07: the backup buttons, the restore and replace screens, the notes. */
 
 #define BW 320
 #define BH 240
@@ -19,6 +21,8 @@
 
 static unsigned char s_pic[BW * BH * 3 + GUARD];
 static unsigned char s_ref[BW * BH * 3];
+static unsigned char s_was[BW * BH * 3];
+static int s_backed; /* check_list(): the chosen world has a backup */
 
 /* Screen pixel (x, y) of a picture kept the way fb_put_bgr8() describes:
  * column by column, bottom row first, blue green red. */
@@ -103,8 +107,8 @@ static void draw_list(const WorldList *l, char names[ROWS][WORLDNAME_SIZE])
 }
 
 /* The list drawn: "WORLDS" and the count, a row for each world shown (the
- * chosen one blue) with its name, the four buttons, background elsewhere
- * (empty rows too, whatever names[] holds for them). */
+ * chosen one blue) with its name, the buttons (RESTORE only if s_backed),
+ * background elsewhere (empty rows too, whatever names[] holds for them). */
 static void check_list(int count, int sel, char names[ROWS][WORLDNAME_SIZE])
 {
     WorldList l;
@@ -113,6 +117,7 @@ static void check_list(int count, int sel, char names[ROWS][WORLDNAME_SIZE])
     int band = WORLDLIST_TITLE_Y + FONT_H * 2;
 
     worldlist_init(&l, count, sel);
+    l.backed_up = s_backed != 0;
     draw_list(&l, names);
     /* The title band against both lines drawn alone. */
     snprintf(text, sizeof text, "%d OF %d", count > 0 ? l.sel + 1 : 0, count);
@@ -150,10 +155,19 @@ static void check_list(int count, int sel, char names[ROWS][WORLDNAME_SIZE])
                  NEWWORLD_BUTTON_G, NEWWORLD_BUTTON_B);
     check_button(WORLDLIST_RIGHT_X, WORLDLIST_LOW_Y, "L  DELETE", NEWWORLD_BUTTON_R,
                  NEWWORLD_BUTTON_G, NEWWORLD_BUTTON_B);
+    check_button(WORLDLIST_LEFT_X, WORLDLIST_BACKUP_Y, "R  BACK UP", NEWWORLD_BUTTON_R,
+                 NEWWORLD_BUTTON_G, NEWWORLD_BUTTON_B);
+    if (s_backed)
+        check_button(WORLDLIST_RIGHT_X, WORLDLIST_BACKUP_Y, "B  RESTORE", NEWWORLD_BUTTON_R,
+                     NEWWORLD_BUTTON_G, NEWWORLD_BUTTON_B);
     for (y = band; y < BH; y++)
-        for (x = 0; x < BW; x++)
-            if (worldlist_row_at(&l, x, y) < 0 && worldlist_button_at(x, y) == WORLDLIST_NONE)
+        for (x = 0; x < BW; x++) {
+            WorldListButton b = worldlist_button_at(x, y);
+
+            if (worldlist_row_at(&l, x, y) < 0 &&
+                (b == WORLDLIST_NONE || (b == WORLDLIST_RESTORE && !s_backed)))
                 bg_ok &= is_bg(x, y);
+        }
     CHECK_EQ_INT(bg_ok, 1);
 }
 
@@ -171,6 +185,32 @@ static void test_draw(void)
     check_list(1, 0, junk);     /* the junk in rows 1..3 is not drawn */
     check_list(2, 1, junk);
     check_list(0, 0, junk);     /* "0 OF 0", no rows */
+    s_backed = 1;               /* with a backup: RESTORE too */
+    check_list(4, 0, names);
+    check_list(9, 7, names);
+    check_list(1, 0, junk);
+    s_backed = 0;
+    /* A backup changes RESTORE's box and nothing else. */
+    worldlist_init(&l, 4, 2);
+    draw_list(&l, names);
+    memcpy(s_was, s_pic, BW * BH * 3);
+    l.backed_up = true;
+    draw_list(&l, names);
+    {
+        int x, y, box_diff = 0, other_same = 1;
+
+        for (y = 0; y < BH; y++)
+            for (x = 0; x < BW; x++) {
+                int same = memcmp(at(s_was, x, y), at(s_pic, x, y), 3) == 0;
+
+                if (worldlist_button_at(x, y) == WORLDLIST_RESTORE)
+                    box_diff += !same;
+                else
+                    other_same &= same;
+            }
+        CHECK_EQ_INT(other_same, 1);
+        CHECK_EQ_INT(box_diff > WORLDLIST_BUTTON_W * WORLDLIST_BUTTON_H * 3 / 4, 1);
+    }
     /* The chosen row is what changes between two choices. */
     worldlist_init(&l, 4, 0);
     draw_list(&l, names);
@@ -198,30 +238,31 @@ static void test_draw(void)
         CHECK_EQ_INT(worldname_valid(names[i]), 1);
 }
 
-/* The delete screen for one name. */
-static void check_ask(const char *name)
+/* An asking screen for one name: title, the name, the warning, the button
+ * that does it (red) and KEEP. */
+static void check_question(WorldListAsking kind, const char *name, const char *title,
+                           const char *warn, const char *left)
 {
     int n, x, y, lit, guard_ok = 1, bg_ok = 1;
     int title_end = WORLDLIST_ASK_TITLE_Y + FONT_H * 3;
 
     memset(s_pic, 0x77, sizeof s_pic);
     memset(s_pic + BW * BH * 3, 0xA5, GUARD);
-    worldlist_ask_draw_bgr8(s_pic, BW, BH, name);
+    worldlist_question_draw_bgr8(s_pic, BW, BH, kind, name);
     for (n = 0; n < GUARD; n++)
         guard_ok &= s_pic[BW * BH * 3 + n] == 0xA5;
     CHECK_EQ_INT(guard_ok, 1);
     CHECK_EQ_INT(centred_wrong(0, BW, WORLDLIST_ASK_TITLE_Y, title_end, BW / 2,
-                               WORLDLIST_ASK_TITLE_Y, "DELETE WORLD", 3, 255, 255, 255, &lit), 0);
+                               WORLDLIST_ASK_TITLE_Y, title, 3, 255, 255, 255, &lit), 0);
     CHECK_EQ_INT(lit > 150, 1);
     CHECK_EQ_INT(centred_wrong(0, BW, WORLDLIST_ASK_NAME_Y, WORLDLIST_ASK_NAME_Y + FONT_H * 2,
                                BW / 2, WORLDLIST_ASK_NAME_Y, name, 2, SETTINGS_GOLD_R,
                                SETTINGS_GOLD_G, SETTINGS_GOLD_B, &lit), 0);
     CHECK_EQ_INT(lit > 8, 1);
     CHECK_EQ_INT(centred_wrong(0, BW, WORLDLIST_ASK_WARN_Y, WORLDLIST_ASK_WARN_Y + FONT_H * 2,
-                               BW / 2, WORLDLIST_ASK_WARN_Y, "IT CANNOT BE UNDONE", 2, 200, 200,
-                               200, &lit), 0);
+                               BW / 2, WORLDLIST_ASK_WARN_Y, warn, 2, 200, 200, 200, &lit), 0);
     CHECK_EQ_INT(lit > 100, 1);
-    check_button(WORLDLIST_LEFT_X, WORLDLIST_TOP_Y, "A  DELETE", WORLDLIST_RED_R, WORLDLIST_RED_G,
+    check_button(WORLDLIST_LEFT_X, WORLDLIST_TOP_Y, left, WORLDLIST_RED_R, WORLDLIST_RED_G,
                  WORLDLIST_RED_B);
     check_button(WORLDLIST_RIGHT_X, WORLDLIST_TOP_Y, "B  KEEP", NEWWORLD_BUTTON_R,
                  NEWWORLD_BUTTON_G, NEWWORLD_BUTTON_B);
@@ -237,12 +278,57 @@ static void check_ask(const char *name)
     CHECK_EQ_INT(bg_ok, 1);
 }
 
+static void check_ask(const char *name)
+{
+    check_question(WORLDLIST_ASKING_DELETE, name, "DELETE WORLD", "IT CANNOT BE UNDONE",
+                   "A  DELETE");
+    memcpy(s_was, s_pic, BW * BH * 3);
+    worldlist_ask_draw_bgr8(s_pic, BW, BH, name); /* the delete screen, the same */
+    CHECK_EQ_INT(memcmp(s_was, s_pic, BW * BH * 3), 0);
+    check_question(WORLDLIST_ASKING_RESTORE, name, "RESTORE WORLD", "ITS BACKUP REPLACES IT",
+                   "A  RESTORE");
+    check_question(WORLDLIST_ASKING_REPLACE, name, "REPLACE BACKUP", "THE OLD BACKUP IS LOST",
+                   "A  BACK UP");
+}
+
+/* A note over the list: its words centred in its box, red if failed,
+ * nothing outside the box changed. */
+static void check_note(const char *text, int failed)
+{
+    char names[ROWS][WORLDNAME_SIZE] = { "WORLD 1", "MY HOUSE", "WWWWWWWWWWWWWWWW", "-" };
+    WorldList l;
+    int x, y, lit, same = 1, tw = font_text_width(text, 2);
+    int x0 = (BW - tw) / 2 - SAVEUI_MSG_PAD, x1 = x0 + tw + 2 * SAVEUI_MSG_PAD;
+
+    worldlist_init(&l, 4, 1);
+    draw_list(&l, names);
+    memcpy(s_was, s_pic, BW * BH * 3);
+    worldlist_note_draw_bgr8(s_pic, BW, BH, text, failed != 0);
+    for (y = 0; y < BH; y++)
+        for (x = 0; x < BW; x++)
+            if (x < x0 || x >= x1 || y < SAVEUI_MSG_Y || y >= SAVEUI_MSG_Y + SAVEUI_MSG_H)
+                same &= memcmp(at(s_was, x, y), at(s_pic, x, y), 3) == 0;
+    CHECK_EQ_INT(same, 1);
+    CHECK_EQ_INT(text_wrong(x0, x1, SAVEUI_MSG_Y, SAVEUI_MSG_Y + SAVEUI_MSG_H, (BW - tw) / 2,
+                            SAVEUI_MSG_Y + 8, text, 2, failed ? SAVEUI_FAIL_R : 255,
+                            failed ? SAVEUI_FAIL_G : 255, failed ? SAVEUI_FAIL_B : 255,
+                            SETTINGS_BG_R, SETTINGS_BG_G, SETTINGS_BG_B, &lit), 0);
+    CHECK_EQ_INT(lit > 40, 1);
+    CHECK_EQ_INT(x0 > 0 && x1 < BW, 1);
+}
+
 static void test_ask_draw(void)
 {
     check_ask("WORLD 1");
     check_ask("MY HOUSE");
     check_ask("WWWWWWWWWWWWWWWW");
+    check_note("BACKUP MADE", 0);
+    check_note("WORLD RESTORED", 0);
+    check_note("BACKUP FAILED", 1);
+    check_note("RESTORE FAILED", 1);
     CHECK_EQ_INT(font_text_width("DELETE WORLD", 3) + 20 < BW, 1);
+    CHECK_EQ_INT(font_text_width("REPLACE BACKUP", 3) + 20 < BW, 1);
+    CHECK_EQ_INT(font_text_width("ITS BACKUP REPLACES IT", 2) + 20 < BW, 1);
     CHECK_EQ_INT(WORLDLIST_ASK_TITLE_Y + FONT_H * 3 < WORLDLIST_ASK_NAME_Y, 1);
     CHECK_EQ_INT(WORLDLIST_ASK_NAME_Y + FONT_H * 2 < WORLDLIST_ASK_WARN_Y, 1);
     CHECK_EQ_INT(WORLDLIST_ASK_WARN_Y + FONT_H * 2 < WORLDLIST_TOP_Y, 1);

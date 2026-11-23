@@ -5,6 +5,7 @@
 #include "font.h"
 #include "framebuffer.h"
 #include "newworld.h"
+#include "saveui.h"
 #include "settings.h"
 
 #define TITLE_SCALE 3
@@ -35,6 +36,7 @@ void worldlist_init(WorldList *l, int count, int sel)
     l->count = count > 0 ? count : 0;
     l->sel = sel;
     l->top = 0;
+    l->backed_up = false;
     settle(l);
 }
 
@@ -87,6 +89,10 @@ WorldListButton worldlist_button_at(int x, int y)
         return WORLDLIST_RENAME;
     if (on_button(x, y, WORLDLIST_RIGHT_X, WORLDLIST_LOW_Y))
         return WORLDLIST_DELETE;
+    if (on_button(x, y, WORLDLIST_LEFT_X, WORLDLIST_BACKUP_Y))
+        return WORLDLIST_BACKUP;
+    if (on_button(x, y, WORLDLIST_RIGHT_X, WORLDLIST_BACKUP_Y))
+        return WORLDLIST_RESTORE;
     return WORLDLIST_NONE;
 }
 
@@ -159,17 +165,48 @@ void worldlist_draw_bgr8(unsigned char *buf, int w, int h, const WorldList *l,
     grey_button(buf, w, h, WORLDLIST_RIGHT_X, WORLDLIST_TOP_Y, "X  NEW");
     grey_button(buf, w, h, WORLDLIST_LEFT_X, WORLDLIST_LOW_Y, "Y  RENAME");
     grey_button(buf, w, h, WORLDLIST_RIGHT_X, WORLDLIST_LOW_Y, "L  DELETE");
+    grey_button(buf, w, h, WORLDLIST_LEFT_X, WORLDLIST_BACKUP_Y, "R  BACK UP");
+    if (l->backed_up)
+        grey_button(buf, w, h, WORLDLIST_RIGHT_X, WORLDLIST_BACKUP_Y, "B  RESTORE");
+}
+
+void worldlist_question_draw_bgr8(unsigned char *buf, int w, int h, WorldListAsking kind,
+                                  const char *name)
+{
+    static const char *const words[3][3] = {
+        { "DELETE WORLD", "IT CANNOT BE UNDONE", "A  DELETE" },
+        { "RESTORE WORLD", "ITS BACKUP REPLACES IT", "A  RESTORE" },
+        { "REPLACE BACKUP", "THE OLD BACKUP IS LOST", "A  BACK UP" },
+    };
+    const char *const *say = words[kind == WORLDLIST_ASKING_RESTORE   ? 1
+                                   : kind == WORLDLIST_ASKING_REPLACE ? 2
+                                                                      : 0];
+
+    fb_fill_bgr8(buf, w * h, SETTINGS_BG_R, SETTINGS_BG_G, SETTINGS_BG_B);
+    centred(buf, w, h, w / 2, WORLDLIST_ASK_TITLE_Y, say[0], TITLE_SCALE, 255, 255, 255);
+    centred(buf, w, h, w / 2, WORLDLIST_ASK_NAME_Y, name, TEXT_SCALE, SETTINGS_GOLD_R,
+            SETTINGS_GOLD_G, SETTINGS_GOLD_B);
+    centred(buf, w, h, w / 2, WORLDLIST_ASK_WARN_Y, say[1], TEXT_SCALE, LABEL_GREY, LABEL_GREY,
+            LABEL_GREY);
+    button(buf, w, h, WORLDLIST_LEFT_X, WORLDLIST_TOP_Y, say[2], WORLDLIST_RED_R,
+           WORLDLIST_RED_G, WORLDLIST_RED_B);
+    grey_button(buf, w, h, WORLDLIST_RIGHT_X, WORLDLIST_TOP_Y, "B  KEEP");
 }
 
 void worldlist_ask_draw_bgr8(unsigned char *buf, int w, int h, const char *name)
 {
-    fb_fill_bgr8(buf, w * h, SETTINGS_BG_R, SETTINGS_BG_G, SETTINGS_BG_B);
-    centred(buf, w, h, w / 2, WORLDLIST_ASK_TITLE_Y, "DELETE WORLD", TITLE_SCALE, 255, 255, 255);
-    centred(buf, w, h, w / 2, WORLDLIST_ASK_NAME_Y, name, TEXT_SCALE, SETTINGS_GOLD_R,
-            SETTINGS_GOLD_G, SETTINGS_GOLD_B);
-    centred(buf, w, h, w / 2, WORLDLIST_ASK_WARN_Y, "IT CANNOT BE UNDONE", TEXT_SCALE, LABEL_GREY,
-            LABEL_GREY, LABEL_GREY);
-    button(buf, w, h, WORLDLIST_LEFT_X, WORLDLIST_TOP_Y, "A  DELETE", WORLDLIST_RED_R,
-           WORLDLIST_RED_G, WORLDLIST_RED_B);
-    grey_button(buf, w, h, WORLDLIST_RIGHT_X, WORLDLIST_TOP_Y, "B  KEEP");
+    worldlist_question_draw_bgr8(buf, w, h, WORLDLIST_ASKING_DELETE, name);
+}
+
+void worldlist_note_draw_bgr8(unsigned char *buf, int w, int h, const char *text, bool failed)
+{
+    int tw = font_text_width(text, TEXT_SCALE);
+
+    rect(buf, w, h, (w - tw) / 2 - SAVEUI_MSG_PAD, SAVEUI_MSG_Y, tw + 2 * SAVEUI_MSG_PAD,
+         SAVEUI_MSG_H, SETTINGS_BG_R, SETTINGS_BG_G, SETTINGS_BG_B);
+    if (failed)
+        font_draw_bgr8(buf, w, h, (w - tw) / 2, SAVEUI_MSG_Y + 8, text, TEXT_SCALE, SAVEUI_FAIL_R,
+                       SAVEUI_FAIL_G, SAVEUI_FAIL_B);
+    else
+        font_draw_bgr8(buf, w, h, (w - tw) / 2, SAVEUI_MSG_Y + 8, text, TEXT_SCALE, 255, 255, 255);
 }

@@ -10,8 +10,8 @@
 #include "worldlist.h"
 #include "worldname.h"
 
-/* The start screens' loop (start.h): the world list, its delete screen and
- * the new-world screen. */
+/* The start screens' loop (start.h): the world list, its asking screens
+ * (delete, restore, replace a backup) and the new-world screen. */
 
 /* Holding the D-pad on the world list moves on after REPEAT_DELAY scans,
  * then every REPEAT_EVERY (30 scans a second). */
@@ -20,7 +20,7 @@
 
 typedef enum {
     SCREEN_LIST, /* the world list */
-    SCREEN_ASK,  /* delete the chosen world? */
+    SCREEN_ASK,  /* delete or restore the chosen world, or replace its backup? */
     SCREEN_NEW   /* the new-world screen */
 } Screen;
 
@@ -65,13 +65,32 @@ static void type_name(int id)
     hidScanInput();
 }
 
-/* The names in the list's rows, from the SD card. */
-static void read_names(const WorldList *l, char names[WORLDLIST_ROWS][WORLDNAME_SIZE])
+/* The names in the list's rows, and whether each has a backup, from the
+ * SD card. Read on a scroll or after a change, never on a cursor move: an
+ * SD card read there dropped a frame (row 2-07). */
+static void read_names(const WorldList *l, char names[WORLDLIST_ROWS][WORLDNAME_SIZE],
+                       bool backed[WORLDLIST_ROWS])
 {
     int i;
 
-    for (i = 0; i < WORLDLIST_ROWS && l->top + i < l->count; i++)
+    for (i = 0; i < WORLDLIST_ROWS && l->top + i < l->count; i++) {
         save_name_read(SAVE_ROOT, s_ids[l->top + i], names[i]);
+        backed[i] = save_backup_exists(SAVE_ROOT, s_ids[l->top + i]);
+    }
+}
+
+/* A note over the world list, shown until its time is up. */
+typedef struct {
+    const char *text;
+    bool failed;
+    u64 until; /* osGetTime() */
+} Note;
+
+static void note_show(Note *n, bool ok, const char *done, const char *failed)
+{
+    n->text = ok ? done : failed;
+    n->failed = !ok;
+    n->until = osGetTime() + WORLDLIST_NOTE_MS;
 }
 
 /* A on the delete screen: delete the chosen world. If it is gone from the
@@ -96,8 +115,11 @@ StartChoice start_choose_world(uint32_t *seed, SaveSettings *kept, int *world, F
                                u64 *paced)
 {
     char names[WORLDLIST_ROWS][WORLDNAME_SIZE], asked[WORLDNAME_SIZE];
+    bool backed[WORLDLIST_ROWS] = { false }; /* the rows' worlds have a backup */
     WorldList list;
     Screen screen;
+    WorldListAsking asking = WORLDLIST_ASKING_DELETE;
+    Note note = { NULL, false, 0 };
     int i, sel = 0, names_top = -1;
     int count = save_world_ids(SAVE_ROOT, s_ids, SAVE_WORLDS_MAX);
 
@@ -136,6 +158,12 @@ StartChoice start_choose_world(uint32_t *seed, SaveSettings *kept, int *world, F
                 worldlist_move(&list, -1);
             if (moved & KEY_DDOWN)
                 worldlist_move(&list, 1);
+            if (names_top != list.top) {
+                read_names(&list, names, backed);
+                names_top = list.top;
+            }
+            list.backed_up = list.sel >= list.top && list.sel - list.top < WORLDLIST_ROWS &&
+                             backed[list.sel - list.top];
             if ((down & KEY_A) || b == WORLDLIST_OPEN) {
                 *world = s_ids[list.sel];
                 return START_OPEN;
@@ -146,16 +174,38 @@ StartChoice start_choose_world(uint32_t *seed, SaveSettings *kept, int *world, F
                 type_name(s_ids[list.sel]);
                 names_top = -1;
             } else if ((down & KEY_L) || b == WORLDLIST_DELETE) {
+                asking = WORLDLIST_ASKING_DELETE;
+                save_name_read(SAVE_ROOT, s_ids[list.sel], asked);
+                screen = SCREEN_ASK;
+            } else if (((down & KEY_R) || b == WORLDLIST_BACKUP) && list.backed_up) {
+                asking = WORLDLIST_ASKING_REPLACE;
+                save_name_read(SAVE_ROOT, s_ids[list.sel], asked);
+                screen = SCREEN_ASK;
+            } else if ((down & KEY_R) || b == WORLDLIST_BACKUP) {
+                note_show(&note, save_backup_make(SAVE_ROOT, s_ids[list.sel]), "BACKUP MADE",
+                          "BACKUP FAILED");
+                names_top = -1; /* read again: RESTORE shown */
+            } else if (((down & KEY_B) || b == WORLDLIST_RESTORE) && list.backed_up) {
+                asking = WORLDLIST_ASKING_RESTORE;
                 save_name_read(SAVE_ROOT, s_ids[list.sel], asked);
                 screen = SCREEN_ASK;
             }
         } else if (screen == SCREEN_ASK) {
             WorldListAsk a = worldlist_ask_at(tx, ty);
 
-            if ((down & KEY_A) || a == WORLDLIST_ASK_DELETE) {
+            if (((down & KEY_A) || a == WORLDLIST_ASK_DELETE) && asking == WORLDLIST_ASKING_DELETE) {
                 delete_chosen(&list, kept);
                 names_top = -1;
                 screen = list.count > 0 ? SCREEN_LIST : SCREEN_NEW;
+            } else if ((down & KEY_A) || a == WORLDLIST_ASK_DELETE) {
+                if (asking == WORLDLIST_ASKING_RESTORE)
+                    note_show(&note, save_backup_restore(SAVE_ROOT, s_ids[list.sel]),
+                              "WORLD RESTORED", "RESTORE FAILED");
+                else
+                    note_show(&note, save_backup_make(SAVE_ROOT, s_ids[list.sel]), "BACKUP MADE",
+                              "BACKUP FAILED");
+                names_top = -1; /* a restore can bring an old name back */
+                screen = SCREEN_LIST;
             } else if ((down & KEY_B) || a == WORLDLIST_ASK_KEEP) {
                 screen = SCREEN_LIST;
             }
@@ -176,12 +226,14 @@ StartChoice start_choose_world(uint32_t *seed, SaveSettings *kept, int *world, F
         fb = gfxGetFramebuffer(GFX_BOTTOM, GFX_LEFT, &fw, &fh);
         if (screen == SCREEN_LIST) {
             if (names_top != list.top) {
-                read_names(&list, names);
+                read_names(&list, names, backed);
                 names_top = list.top;
             }
             worldlist_draw_bgr8(fb, fh, fw, &list, (const char(*)[WORLDNAME_SIZE])names);
+            if (note.text != NULL && osGetTime() < note.until)
+                worldlist_note_draw_bgr8(fb, fh, fw, note.text, note.failed);
         } else if (screen == SCREEN_ASK) {
-            worldlist_ask_draw_bgr8(fb, fh, fw, asked);
+            worldlist_question_draw_bgr8(fb, fh, fw, asking, asked);
         } else {
             newworld_draw_bgr8(fb, fh, fw, *seed, list.count > 0);
         }

@@ -20,6 +20,8 @@
  *                              looks, and the hotbar
  *   worlds/<n>/name.dat        world n's name, if it was given one
  *   worlds/<n>/x<cx>z<cz>.chk  chunk (cx, cz) of world n, as it was changed
+ *   backups/<n>/               world n's backup (row 2-07): its world.dat,
+ *                              name.dat and chunk files as they were
  * Only chunks that were changed get a file: every other chunk is made again
  * from the seed, the same every time. Worlds are numbered from 1; a new
  * world takes the lowest number with no folder.
@@ -144,7 +146,8 @@ void save_set_free(SaveChunkSet *s);
  * True if both are there afterwards. */
 bool save_root_make(const char *root);
 
-/* The lowest world number with no folder, or 0 if all are taken. */
+/* The lowest world number with no folder and no backup folder (so a new
+ * world never finds an old world's backup), or 0 if all are taken. */
 int save_free_id(const char *root);
 
 /* Is world id there with a world.dat that reads? */
@@ -185,8 +188,38 @@ bool save_name_write(const char *root, int id, const char *name);
 
 /* Delete world id: its world.dat (and world.dat.tmp) first, so a delete
  * cut short leaves no world that reads, then every other file in its
- * folder, then the folder. True if the folder is gone afterwards. */
+ * folder, then the folder; then its backup the same way. True if both
+ * folders are gone afterwards. */
 bool save_world_delete(const char *root, int id);
+
+/* --- World backups (roadmap row 2-07, save_backup.c) --- */
+
+/* Each world has at most one backup, in backups/<id>. A file is copied
+ * only if the game would read it (from <name>.tmp if <name> does not
+ * read, as the game reads); one that reads neither way is left out, as
+ * the game leaves it. world.dat is always copied last. */
+
+/* Has world id a backup whose world.dat reads? */
+bool save_backup_exists(const char *root, int id);
+
+/* Back world id up, in place of any backup it had: the old backup's
+ * world.dat goes first (so a backup cut short is no backup), then the
+ * rest of it, then the world's name.dat and chunk files are copied, its
+ * world.dat last. False if world id does not read or a file could not
+ * be written (there is then no backup). */
+bool save_backup_make(const char *root, int id);
+
+/* Put world id back as its backup holds it (the backup is kept): every
+ * file in the world's folder but its world.dat goes, the backup's
+ * name.dat and chunk files are copied in, then its world.dat last, so a
+ * restore cut short still leaves a world that reads (restoring again
+ * finishes it). False if there is no backup or a file could not be
+ * written. */
+bool save_backup_restore(const char *root, int id);
+
+/* Delete world id's backup: its world.dat first, then the rest, then its
+ * folder. True if the folder is gone afterwards. */
+bool save_backup_delete(const char *root, int id);
 
 /* --- Autosave --- */
 

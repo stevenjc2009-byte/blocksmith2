@@ -10,7 +10,8 @@
 #include "test.h"
 #include "worldlist.h"
 
-/* Row 2-05: the world list, its delete screen, and which world is chosen. */
+/* Row 2-05: the world list, its delete screen, and which world is chosen;
+ * row 2-07: its backup buttons. */
 
 #define BW 320
 #define BH 240
@@ -199,10 +200,13 @@ static void test_buttons_at(void)
     static const struct {
         int x, y;
         WorldListButton b;
-    } boxes[4] = { { WORLDLIST_LEFT_X, WORLDLIST_TOP_Y, WORLDLIST_OPEN },
+    } boxes[6] = { { WORLDLIST_LEFT_X, WORLDLIST_TOP_Y, WORLDLIST_OPEN },
                    { WORLDLIST_RIGHT_X, WORLDLIST_TOP_Y, WORLDLIST_NEW },
                    { WORLDLIST_LEFT_X, WORLDLIST_LOW_Y, WORLDLIST_RENAME },
-                   { WORLDLIST_RIGHT_X, WORLDLIST_LOW_Y, WORLDLIST_DELETE } };
+                   { WORLDLIST_RIGHT_X, WORLDLIST_LOW_Y, WORLDLIST_DELETE },
+                   { WORLDLIST_LEFT_X, WORLDLIST_BACKUP_Y, WORLDLIST_BACKUP },
+                   { WORLDLIST_RIGHT_X, WORLDLIST_BACKUP_Y, WORLDLIST_RESTORE } };
+    WorldList l;
     int i, x, y, ok = 1, ask_ok = 1, n = 0, ask_n = 0;
 
     for (y = -5; y < BH + 5; y++)
@@ -210,7 +214,7 @@ static void test_buttons_at(void)
             WorldListButton want = WORLDLIST_NONE;
             WorldListAsk ask = WORLDLIST_ASK_NONE;
 
-            for (i = 0; i < 4; i++)
+            for (i = 0; i < 6; i++)
                 if (in_box(x, y, boxes[i].x, boxes[i].y, WORLDLIST_BUTTON_W, WORLDLIST_BUTTON_H))
                     want = boxes[i].b;
             if (want == WORLDLIST_OPEN)
@@ -224,7 +228,7 @@ static void test_buttons_at(void)
         }
     CHECK_EQ_INT(ok, 1);
     CHECK_EQ_INT(ask_ok, 1);
-    CHECK_EQ_INT(n, 4 * WORLDLIST_BUTTON_W * WORLDLIST_BUTTON_H);
+    CHECK_EQ_INT(n, 6 * WORLDLIST_BUTTON_W * WORLDLIST_BUTTON_H);
     CHECK_EQ_INT(ask_n, 2 * WORLDLIST_BUTTON_W * WORLDLIST_BUTTON_H);
     /* Corners in, one step out. */
     CHECK_EQ_INT(worldlist_button_at(WORLDLIST_LEFT_X, WORLDLIST_TOP_Y), WORLDLIST_OPEN);
@@ -233,14 +237,21 @@ static void test_buttons_at(void)
                                      WORLDLIST_LOW_Y + WORLDLIST_BUTTON_H - 1), WORLDLIST_DELETE);
     CHECK_EQ_INT(worldlist_button_at(WORLDLIST_RIGHT_X + WORLDLIST_BUTTON_W,
                                      WORLDLIST_LOW_Y + 5), WORLDLIST_NONE);
-    CHECK_EQ_INT(worldlist_button_at(100, WORLDLIST_SPARE_Y + 5), WORLDLIST_NONE);
+    CHECK_EQ_INT(worldlist_button_at(100, WORLDLIST_BACKUP_Y + 5), WORLDLIST_BACKUP);
+    CHECK_EQ_INT(worldlist_button_at(200, WORLDLIST_BACKUP_Y + 5), WORLDLIST_RESTORE);
+    CHECK_EQ_INT(worldlist_button_at(WORLDLIST_LEFT_X + WORLDLIST_BUTTON_W, WORLDLIST_BACKUP_Y + 5),
+                 WORLDLIST_NONE);
+    /* A new list shows no backup until told. */
+    l.backed_up = true;
+    worldlist_init(&l, 3, 1);
+    CHECK_EQ_INT(l.backed_up, 0);
     /* Everything fits on the screen without touching: title, rows, the
-     * spare row, the two rows of buttons, side by side. */
+     * backup row, the two rows of buttons, side by side. */
     CHECK_EQ_INT(WORLDLIST_TITLE_Y + FONT_H * 2 < WORLDLIST_ROW_Y, 1);
     CHECK_EQ_INT(WORLDLIST_ROW_Y + (ROWS - 1) * WORLDLIST_ROW_STEP + WORLDLIST_ROW_H <
-                 WORLDLIST_SPARE_Y, 1);
+                 WORLDLIST_BACKUP_Y, 1);
     CHECK_EQ_INT(WORLDLIST_ROW_STEP > WORLDLIST_ROW_H, 1);
-    CHECK_EQ_INT(WORLDLIST_SPARE_Y + WORLDLIST_BUTTON_H < WORLDLIST_TOP_Y, 1);
+    CHECK_EQ_INT(WORLDLIST_BACKUP_Y + WORLDLIST_BUTTON_H < WORLDLIST_TOP_Y, 1);
     CHECK_EQ_INT(WORLDLIST_TOP_Y + WORLDLIST_BUTTON_H < WORLDLIST_LOW_Y, 1);
     CHECK_EQ_INT(WORLDLIST_LOW_Y + WORLDLIST_BUTTON_H < BH, 1);
     CHECK_EQ_INT(WORLDLIST_LEFT_X + WORLDLIST_BUTTON_W < WORLDLIST_RIGHT_X, 1);

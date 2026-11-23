@@ -41,7 +41,7 @@ static bool is_dir(const char *path)
 
 /* Make path and every folder above it (mkdir failing because one is
  * already there is fine); true if path is a folder afterwards. */
-static bool make_dirs(const char *path)
+bool save_make_dirs(const char *path)
 {
     char part[SAVE_PATH_MAX];
     size_t i, n = strlen(path);
@@ -116,7 +116,7 @@ bool save_root_make(const char *root)
 {
     char worlds[SAVE_PATH_MAX];
 
-    return make_dirs(root) && save_join(worlds, root, "worlds") && make_dirs(worlds);
+    return save_make_dirs(root) && save_join(worlds, root, "worlds") && save_make_dirs(worlds);
 }
 
 bool save_world_dir(char out[SAVE_PATH_MAX], const char *root, int id)
@@ -126,13 +126,21 @@ bool save_world_dir(char out[SAVE_PATH_MAX], const char *root, int id)
     return n > 0 && n < SAVE_PATH_MAX;
 }
 
+bool save_backup_dir(char out[SAVE_PATH_MAX], const char *root, int id)
+{
+    int n = snprintf(out, SAVE_PATH_MAX, "%s/backups/%d", root, id);
+
+    return n > 0 && n < SAVE_PATH_MAX;
+}
+
 int save_free_id(const char *root)
 {
-    char dir[SAVE_PATH_MAX];
+    char dir[SAVE_PATH_MAX], backup[SAVE_PATH_MAX];
     int id;
 
     for (id = 1; id <= SAVE_WORLDS_MAX; id++)
-        if (save_world_dir(dir, root, id) && !is_dir(dir))
+        if (save_world_dir(dir, root, id) && !is_dir(dir) && save_backup_dir(backup, root, id) &&
+            !is_dir(backup))
             return id;
     return 0;
 }
@@ -182,7 +190,7 @@ bool save_world_open(SaveWorld *sw, const char *root, int id, bool make)
     sw->store.ctx = sw;
     if (id < 1 || id > SAVE_WORLDS_MAX || !save_world_dir(sw->dir, root, id))
         return false;
-    if (make && !make_dirs(sw->dir))
+    if (make && !save_make_dirs(sw->dir))
         return false;
     d = opendir(sw->dir);
     if (d == NULL)

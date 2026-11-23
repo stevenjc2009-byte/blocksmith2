@@ -14,10 +14,11 @@
 #endif
 
 /* The world list's half of the SD card (roadmap row 2-05): which worlds
- * there are, their names, deleting one. */
+ * there are, their names, deleting one (and emptying a folder, for
+ * backups too). */
 
-/* A delete goes over a folder until a pass finds nothing to remove, at
- * most this many times (a card may skip names removed while it lists). */
+/* save_dir_clear() goes over a folder until a pass finds nothing to
+ * remove, at most this many times. */
 #define DELETE_PASSES 8
 
 /* A world folder's number from its name: digits only, no leading zero,
@@ -112,8 +113,14 @@ bool save_name_write(const char *root, int id, const char *name)
     return save_write_file(path, buf, sizeof buf);
 }
 
-/* Remove every file in dir; how many went. */
-static int remove_files(const char *dir)
+static bool is_world_dat(const char *name)
+{
+    return strcmp(name, "world.dat") == 0 || strcmp(name, "world.dat.tmp") == 0;
+}
+
+/* Remove every file in dir (but world.dat and world.dat.tmp if
+ * keep_world); how many went. */
+static int remove_files(const char *dir, bool keep_world)
 {
     char path[SAVE_PATH_MAX];
     DIR *d = opendir(dir);
@@ -124,31 +131,53 @@ static int remove_files(const char *dir)
         return 0;
     while ((e = readdir(d)) != NULL)
         if (strcmp(e->d_name, ".") != 0 && strcmp(e->d_name, "..") != 0 &&
-            save_join(path, dir, e->d_name) && remove(path) == 0)
+            !(keep_world && is_world_dat(e->d_name)) && save_join(path, dir, e->d_name) &&
+            remove(path) == 0)
             gone++;
     closedir(d);
     return gone;
 }
 
-bool save_world_delete(const char *root, int id)
+void save_dir_clear(const char *dir, bool keep_world)
 {
-    char dir[SAVE_PATH_MAX], path[SAVE_PATH_MAX];
-    DIR *d;
+    char path[SAVE_PATH_MAX];
     int pass;
 
-    if (id < 1 || id > SAVE_WORLDS_MAX || !save_world_dir(dir, root, id))
-        return false;
-    /* From here on the world does not read, whatever is left. */
-    if (save_join(path, dir, "world.dat"))
-        remove(path);
-    if (save_join(path, dir, "world.dat.tmp"))
-        remove(path);
-    for (pass = 0; pass < DELETE_PASSES && remove_files(dir) > 0; pass++)
+    if (!keep_world) {
+        /* From here on nothing in dir reads as a world, whatever is left. */
+        if (save_join(path, dir, "world.dat"))
+            remove(path);
+        if (save_join(path, dir, "world.dat.tmp"))
+            remove(path);
+    }
+    for (pass = 0; pass < DELETE_PASSES && remove_files(dir, keep_world) > 0; pass++)
         ;
+}
+
+bool save_dir_delete(const char *dir)
+{
+    DIR *d = opendir(dir);
+
+    if (d == NULL) /* no folder: one SD card call, not five (a world's
+                      backup folder is usually not there) */
+        return true;
+    closedir(d);
+    save_dir_clear(dir, false);
     REMOVE_DIR(dir);
     d = opendir(dir);
     if (d == NULL)
         return true;
     closedir(d);
     return false;
+}
+
+bool save_world_delete(const char *root, int id)
+{
+    char dir[SAVE_PATH_MAX];
+    bool gone;
+
+    if (id < 1 || id > SAVE_WORLDS_MAX || !save_world_dir(dir, root, id))
+        return false;
+    gone = save_dir_delete(dir);
+    return save_backup_delete(root, id) && gone;
 }
