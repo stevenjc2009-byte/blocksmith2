@@ -25,6 +25,10 @@ enum {
     BLOCK_TERRACOTTA_RED,    /* ...red... */
     BLOCK_TERRACOTTA_BROWN,  /* ...and dark brown */
     BLOCK_GRAVEL,            /* cold sea floors */
+    BLOCK_PLANKS,           /* row 4-05: oak planks (villages); solid, breakable like stone */
+    BLOCK_LOG,              /* row 4-05: oak log, bark sides and rings top and bottom (trees too, row 4-03) */
+    BLOCK_COBBLESTONE,      /* row 4-05: village foundations, wells and ruins */
+    BLOCK_MOSSY_COBBLESTONE, /* row 4-05: ruins */
     BLOCK_COUNT
 };
 

@@ -8,6 +8,7 @@
 #include <stdio.h>
 
 #include "chunk_mesh.h"
+#include "village.h"
 #include "world.h"
 
 extern int g_checks;
@@ -109,6 +110,11 @@ void test_biome(void);
 void test_biome_tables(void); /* test_biome_tables.c, called by test_biome() */
 /* A biome's grass tint on a reference grass top face (6 vertices). */
 void test_ref_grass_tint(MeshVertex *face, int biome);
+void test_structure(void);
+void test_structure_world(void);
+void test_structure_biome(void);
+/* Row 4-05's checks of one village built in the world (test_structure_world.c). */
+void test_check_village(uint32_t seed, const VillagePlan *p);
 
 /* Row 3-03's reference torch light (test_light.c): fills a table for chunk
  * c and its neighbours (nb as chunk_mesh.h, NULL entries air) from the rule

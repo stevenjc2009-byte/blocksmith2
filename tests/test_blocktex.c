@@ -85,6 +85,34 @@ static void check_tile_all(int tile, int (*test)(uint32_t), const char *what)
     CHECK_EQ_INT(bad, 0);
 }
 
+/* Mean colour of a tile as 0xRRGGBB00 (row 4-05 structure tiles). */
+static uint32_t mean_colour(int tile)
+{
+    int x, y, r = 0, g = 0, b = 0, n = BLOCKTEX_TILE * BLOCKTEX_TILE;
+
+    for (y = 0; y < BLOCKTEX_TILE; y++)
+        for (x = 0; x < BLOCKTEX_TILE; x++) {
+            uint32_t c = texel(tile, x, y);
+            r += red(c);
+            g += green(c);
+            b += blue(c);
+        }
+    return ((uint32_t)(r / n) << 24) | ((uint32_t)(g / n) << 16) | ((uint32_t)(b / n) << 8) | 0xFF;
+}
+
+static void check_structure_tiles(void)
+{
+    int tile;
+
+    for (tile = TILE_PLANKS; tile <= TILE_LOG_TOP; tile++)
+        CHECK_EQ_INT(is_brown(mean_colour(tile)), 1); /* planks and both log tiles: brown */
+    CHECK_EQ_INT(is_grey(mean_colour(TILE_COBBLE)), 1);
+    /* moss makes the mossy tile greener than plain cobble, but still stone */
+    CHECK_EQ_INT(green(mean_colour(TILE_MOSSY_COBBLE)) - red(mean_colour(TILE_MOSSY_COBBLE)) >
+                     green(mean_colour(TILE_COBBLE)) - red(mean_colour(TILE_COBBLE)) + 5, 1);
+    CHECK_EQ_INT(mean_colour(TILE_PLANKS) != mean_colour(TILE_LOG_TOP), 1);
+}
+
 static void check_grass_side(void)
 {
     int x, y, bad_run = 0, bad_below = 0, min_run = 99, max_run = 0;
@@ -162,6 +190,7 @@ void test_blocktex(void)
     check_tile_all(TILE_STONE, is_grey, "grey");
     check_grass_side();
     check_torch();
+    check_structure_tiles();
     check_tile_all(TILE_SAND, is_sand, "sand"); /* row 4-01 */
     check_tile_all(TILE_WATER, is_water, "water");
     CHECK_EQ_INT(TILE_SAND, 8);
@@ -201,7 +230,7 @@ void test_blocktex(void)
      * colour, snow white-blue, ice light blue, terracotta bands warm. */
     CHECK_EQ_INT(BLOCKTEX_SIZE, 128);
     CHECK_EQ_INT(BLOCKTEX_PER_ROW, 8);
-    CHECK_EQ_INT(TILE_COUNT, 22);
+    CHECK_EQ_INT(TILE_COUNT, 27); /* 22 after row 4-02, 5 more for row 4-05 */
     for (t = TILE_SNOW; t < TILE_COUNT; t++) {
         int x, y, check = 0;
 

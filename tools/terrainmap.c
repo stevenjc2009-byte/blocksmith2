@@ -1,7 +1,7 @@
 /* Pictures of the ground for checking terrain.c by eye (roadmap rows 4-01
  * and 4-02). Host tool, not part of the game:
  *
- *   gcc -O2 -Iinclude tools/terrainmap.c source/terrain.c source/terrain_ground.c  *       source/biome.c source/terrain_noise.c source/terrain_spawn.c -o terrainmap
+ *   gcc -O2 -Iinclude -Itools tools/terrainmap.c source/terrain.c \n *       source/terrain_ground.c source/terrain_fill.c source/biome.c \n *       source/terrain_noise.c source/terrain_spawn.c source/structure.c \n *       source/structure_templates.c source/village.c source/village_site.c \n *       source/village_apply.c source/village_cache.c source/village_ctx.c \n *       source/ruins.c source/block.c source/chunk.c -o terrainmap
  *   terrainmap <seed> <map.png> [<side.png> [<blocks per pixel>]]
  *
  * map.png: 512 x 512 blocks seen from above, centred on the spawn (red
@@ -15,8 +15,9 @@
  *   ocean blue, warm ocean turquoise, cold ocean dark blue, frozen ocean
  *   pale ice blue, beach cream, snowy beach white, river light blue,
  *   frozen river very pale blue.
- * Black dots mark where a column is 2 or more blocks above a neighbour
- * (cliffs).
+ * Villages are white-edged orange squares, ruins on land purple and ruins
+ * in the sea yellow (row 4-05). Black dots mark where a column is 2 or
+ * more blocks above a neighbour (cliffs).
  * side.png: the row through the highest point, seen from the side, 2
  * pixels per block up. With more than one block per pixel the map shows a
  * wider area (cliff dots then mean nothing). */
@@ -26,106 +27,17 @@
 
 #include "biome.h"
 #include "block.h"
+#include "pngout.h"
+#include "ruins.h"
+#include "structure.h"
 #include "terrain.h"
+#include "village.h"
 
 #define SIZE 512
 #define CHUNKS (SIZE / CHUNK_SIZE)
 
 static TerrainColumn s_col[SIZE][SIZE];
 static unsigned char s_rgb[SIZE * SIZE * 3];
-
-static unsigned long s_crc_table[256];
-
-static unsigned long crc(const unsigned char *p, size_t n, unsigned long c)
-{
-    size_t i;
-
-    for (i = 0; i < n; i++)
-        c = s_crc_table[(c ^ p[i]) & 0xFF] ^ (c >> 8);
-    return c;
-}
-
-static void put32(unsigned char *p, unsigned long v)
-{
-    p[0] = (unsigned char)(v >> 24);
-    p[1] = (unsigned char)(v >> 16);
-    p[2] = (unsigned char)(v >> 8);
-    p[3] = (unsigned char)v;
-}
-
-static void chunk_out(FILE *f, const char *type, const unsigned char *data, size_t n)
-{
-    unsigned char b[4];
-    unsigned long c;
-
-    put32(b, (unsigned long)n);
-    fwrite(b, 1, 4, f);
-    fwrite(type, 1, 4, f);
-    fwrite(data, 1, n, f);
-    c = crc((const unsigned char *)type, 4, 0xFFFFFFFFul);
-    c = crc(data, n, c) ^ 0xFFFFFFFFul;
-    put32(b, c);
-    fwrite(b, 1, 4, f);
-}
-
-/* An RGB picture as a PNG, with stored (not squeezed) zlib blocks. */
-static int write_png(const char *path, const unsigned char *rgb, int w, int h)
-{
-    size_t row = (size_t)w * 3 + 1, raw_n = row * (size_t)h, blocks = raw_n / 65535 + 1;
-    unsigned char *raw = malloc(raw_n), *z = malloc(raw_n + blocks * 5 + 6), ihdr[13];
-    unsigned long a = 1, b = 0;
-    size_t i, at = 0, zn = 0;
-    FILE *f = fopen(path, "wb");
-    int y, n;
-
-    for (n = 0; n < 256; n++) {
-        unsigned long c = (unsigned long)n;
-        int k;
-
-        for (k = 0; k < 8; k++)
-            c = c & 1 ? 0xEDB88320ul ^ (c >> 1) : c >> 1;
-        s_crc_table[n] = c;
-    }
-    if (!f || !raw || !z)
-        return 0;
-    for (y = 0; y < h; y++) {
-        raw[row * (size_t)y] = 0;
-        memcpy(raw + row * (size_t)y + 1, rgb + (size_t)y * (size_t)w * 3, (size_t)w * 3);
-    }
-    z[zn++] = 0x78;
-    z[zn++] = 0x01;
-    while (at < raw_n) {
-        size_t len = raw_n - at > 65535 ? 65535 : raw_n - at;
-
-        z[zn++] = at + len == raw_n;
-        z[zn++] = (unsigned char)len;
-        z[zn++] = (unsigned char)(len >> 8);
-        z[zn++] = (unsigned char)~len;
-        z[zn++] = (unsigned char)(~len >> 8);
-        memcpy(z + zn, raw + at, len);
-        zn += len;
-        at += len;
-    }
-    for (i = 0; i < raw_n; i++) {
-        a = (a + raw[i]) % 65521;
-        b = (b + a) % 65521;
-    }
-    put32(z + zn, (b << 16) | a);
-    zn += 4;
-    fwrite("\x89PNG\r\n\x1a\n", 1, 8, f);
-    put32(ihdr, (unsigned long)w);
-    put32(ihdr + 4, (unsigned long)h);
-    ihdr[8] = 8;  /* bits */
-    ihdr[9] = 2;  /* RGB */
-    ihdr[10] = ihdr[11] = ihdr[12] = 0;
-    chunk_out(f, "IHDR", ihdr, 13);
-    chunk_out(f, "IDAT", z, zn);
-    chunk_out(f, "IEND", NULL, 0);
-    fclose(f);
-    free(raw);
-    free(z);
-    return 1;
-}
 
 static int clampc(int v)
 {
@@ -185,10 +97,62 @@ static void colour(const TerrainColumn *c, int *r, int *g, int *b)
     }
 }
 
+/* A square of side 2 * r + 1 pixels with a white edge, at world (wx, wz). */
+static void dot(int wx, int wz, int sx, int sz, int x0, int z0, int step, int r,
+                int cr, int cg, int cb)
+{
+    int px = step == 1 ? wx - x0 : (wx - sx) / step + SIZE / 2;
+    int pz = step == 1 ? wz - z0 : (wz - sz) / step + SIZE / 2;
+    int x, z;
+
+    for (z = -r; z <= r; z++)
+        for (x = -r; x <= r; x++) {
+            int qx = px + x, qz = pz + z;
+            unsigned char *o;
+
+            if (qx < 0 || qx >= SIZE || qz < 0 || qz >= SIZE)
+                continue;
+            o = s_rgb + ((size_t)qz * SIZE + (size_t)qx) * 3;
+            if (abs(x) == r || abs(z) == r) {
+                o[0] = o[1] = o[2] = 255;
+            } else {
+                o[0] = (unsigned char)cr;
+                o[1] = (unsigned char)cg;
+                o[2] = (unsigned char)cb;
+            }
+        }
+}
+
+/* Mark every village and ruin the map covers; returns how many of each. */
+static void mark_structures(uint32_t seed, int sx, int sz, int x0, int z0, int step, int n[3])
+{
+    const int vsize = VILLAGE_REGION_CHUNKS * CHUNK_SIZE, rsize = RUIN_REGION_CHUNKS * CHUNK_SIZE;
+    int wx0 = step == 1 ? x0 : sx - SIZE / 2 * step, wz0 = step == 1 ? z0 : sz - SIZE / 2 * step;
+    int rx, rz;
+
+    for (rz = structure_floor_div(wz0, vsize); rz <= structure_floor_div(wz0 + SIZE * step, vsize); rz++)
+        for (rx = structure_floor_div(wx0, vsize); rx <= structure_floor_div(wx0 + SIZE * step, vsize); rx++) {
+            VillagePlan p;
+            if (village_plan(seed, rx, rz, &p)) {
+                dot(p.cx, p.cz, sx, sz, x0, z0, step, 4, 255, 140, 0);
+                n[0]++;
+            }
+        }
+    for (rz = structure_floor_div(wz0, rsize); rz <= structure_floor_div(wz0 + SIZE * step, rsize); rz++)
+        for (rx = structure_floor_div(wx0, rsize); rx <= structure_floor_div(wx0 + SIZE * step, rsize); rx++) {
+            RuinPlan p;
+            if (ruin_plan(seed, rx, rz, &p)) {
+                dot(p.x0 + p.width / 2, p.z0 + p.depth / 2, sx, sz, x0, z0, step, 2,
+                    p.sea ? 255 : 160, p.sea ? 230 : 40, p.sea ? 0 : 220);
+                n[p.sea ? 2 : 1]++;
+            }
+        }
+}
+
 int main(int argc, char **argv)
 {
     uint32_t seed;
-    int sx, sz, x0, z0, x, z, cx, cz, top = -1, top_z = 0, n_kind[TERRAIN_KIND_COUNT] = { 0 }, step;
+    int sx, sz, x0, z0, x, z, cx, cz, top = -1, top_z = 0, n_struct[3] = { 0, 0, 0 }, n_kind[TERRAIN_KIND_COUNT] = { 0 }, step;
     static TerrainColumn chunk[CHUNK_SIZE][CHUNK_SIZE];
 
     if (argc < 3) {
@@ -267,6 +231,8 @@ int main(int argc, char **argv)
             o[0] = 255; o[1] = 0; o[2] = 0;
         }
     }
+    mark_structures(seed, sx, sz, x0, z0, step, n_struct);
+    printf("villages %d, land ruins %d, sea ruins %d\n", n_struct[0], n_struct[1], n_struct[2]);
     printf("ocean %d beach %d river %d plains %d hills %d mountain %d (of %d), top %d\n",
            n_kind[0], n_kind[1], n_kind[2], n_kind[3], n_kind[4], n_kind[5], SIZE * SIZE, top);
     if (!write_png(argv[2], s_rgb, SIZE, SIZE))

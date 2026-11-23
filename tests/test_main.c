@@ -53,6 +53,9 @@ int main(void)
     test_save_job();
     test_water();
     test_water_ref();
+    test_structure();
+    test_structure_world();
+    test_structure_biome();
 
     printf("PC tests: %d checks, %d failed\n", g_checks, g_fails);
     if (g_checks == 0) {

@@ -1,33 +1,4 @@
-#include "blocktex.h"
-
-/* Every texel's wobble comes from a hash of where it is, so the picture is
- * the same on every run and every machine. */
-static uint32_t hash3(uint32_t x, uint32_t y, uint32_t seed)
-{
-    uint32_t h = x * 0x8DA6B343u ^ y * 0xD8163841u ^ seed * 0xCB1AB31Fu;
-
-    h ^= h >> 13;
-    h *= 0x5BD1E995u;
-    h ^= h >> 15;
-    return h;
-}
-
-/* A whole number from -amount to +amount. */
-static int wobble(uint32_t h, int amount)
-{
-    return (int)(h % (uint32_t)(2 * amount + 1)) - amount;
-}
-
-static int clamp255(int v)
-{
-    return v < 0 ? 0 : v > 255 ? 255 : v;
-}
-
-static uint32_t rgb(int r, int g, int b)
-{
-    return ((uint32_t)clamp255(r) << 24) | ((uint32_t)clamp255(g) << 16) |
-           ((uint32_t)clamp255(b) << 8) | 0xFF;
-}
+#include "blocktex_internal.h"
 
 /* Grass round the colour (r, g, b), with lighter and darker blades. */
 static uint32_t grass_blades(int x, int y, int r, int g, int b)
@@ -305,6 +276,11 @@ static uint32_t tile_texel(int tile, int x, int y)
     case TILE_TERRACOTTA_RED:    return terracotta_texel(x, y, 143, 61, 46, 22);
     case TILE_TERRACOTTA_BROWN:  return terracotta_texel(x, y, 77, 51, 36, 23);
     case TILE_GRAVEL:     return gravel_texel(x, y);
+    case TILE_PLANKS:     return blocktex_planks_texel(x, y);
+    case TILE_LOG_SIDE:   return blocktex_log_side_texel(x, y);
+    case TILE_LOG_TOP:    return blocktex_log_top_texel(x, y);
+    case TILE_COBBLE:     return blocktex_cobble_texel(x, y);
+    case TILE_MOSSY_COBBLE: return blocktex_mossy_cobble_texel(x, y);
     default:              return missing_texel(x, y);
     }
 }

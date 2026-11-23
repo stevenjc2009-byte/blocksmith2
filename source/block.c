@@ -49,6 +49,14 @@ int block_face_tile(int block, int face)
         return TILE_TERRACOTTA_BROWN;
     case BLOCK_GRAVEL:
         return TILE_GRAVEL;
+    case BLOCK_PLANKS:
+        return TILE_PLANKS;
+    case BLOCK_LOG:
+        return face == FACE_POS_Y || face == FACE_NEG_Y ? TILE_LOG_TOP : TILE_LOG_SIDE;
+    case BLOCK_COBBLESTONE:
+        return TILE_COBBLE;
+    case BLOCK_MOSSY_COBBLESTONE:
+        return TILE_MOSSY_COBBLE;
     default:
         return -1; /* air, or not a block */
     }

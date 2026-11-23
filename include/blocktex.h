@@ -4,7 +4,8 @@
 #include <stdint.h>
 
 /* The block textures, the sun and moon (row 3-02), the clouds' white
- * (row 3-04), sand and water (row 4-01) and the biome blocks (row 4-02),
+ * (row 3-04), sand and water (row 4-01), the biome blocks (row 4-02) and
+ * planks, logs and cobblestone (row 4-05),
  * drawn in code (kickoff F-4): one 128 x 128 picture (a power of two, for
  * the GPU) holding an 8 x 8 grid of 16 x 16 tiles. Tile i sits in column
  * i % 8 and row i / 8, counting rows from the top. */
@@ -40,6 +41,11 @@ enum {
     TILE_TERRACOTTA_RED,
     TILE_TERRACOTTA_BROWN,
     TILE_GRAVEL,
+    TILE_PLANKS,      /* row 4-05: oak boards */
+    TILE_LOG_SIDE,    /* row 4-05: oak bark */
+    TILE_LOG_TOP,     /* row 4-05: oak rings */
+    TILE_COBBLE,      /* row 4-05: grey rounded stones */
+    TILE_MOSSY_COBBLE, /* row 4-05: the same with green moss */
     TILE_COUNT
 };
 

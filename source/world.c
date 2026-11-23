@@ -4,6 +4,7 @@
 
 #include "block.h"
 #include "terrain.h"
+#include "worldgen.h"
 
 void world_init(World *w, uint32_t seed)
 {
@@ -64,7 +65,7 @@ void world_load(World *w, int cx, int cz)
 
     put_away(w, s);
     if (w->store == NULL || !w->store->load(w->store->ctx, &s->chunk, cx, cz))
-        terrain_fill_chunk(&s->chunk, w->seed, cx, cz);
+        world_gen_chunk(&s->chunk, w->seed, cx, cz);
     else
         terrain_fill_biomes(&s->chunk, w->seed, cx, cz); /* saves keep blocks only */
     s->cx = cx;

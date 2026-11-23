@@ -36,6 +36,11 @@ static int64_t lerp(int64_t a, int64_t b, int64_t t)
     return a + (b - a) * t / ONE;
 }
 
+uint32_t noise_hash(uint32_t seed, int a, int b)
+{
+    return mix(mix(seed ^ ((uint32_t)a * 0x9E3779B9u)) + (uint32_t)b * 0x85EBCA77u + 0x165667B1u);
+}
+
 int noise_smooth(int t)
 {
     return (int)smooth(t);

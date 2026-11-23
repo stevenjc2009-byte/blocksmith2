@@ -38,6 +38,10 @@ int noise_value(uint32_t seed, const NoiseLayer *l, int x, int z);
 #define NOISE_SLOPE_TOP 46341 /* NOISE_ONE / sqrt(2) */
 int noise_slope(uint32_t seed, const NoiseLayer *l, int x, int z);
 
+/* A random whole number for the seed and the two whole numbers a and b
+ * (structures: row 4-05). The same on every machine. */
+uint32_t noise_hash(uint32_t seed, int a, int b);
+
 /* 3t^2 - 2t^3 for t from 0 to NOISE_ONE: an S-shaped step that starts and
  * ends flat. */
 int noise_smooth(int t);

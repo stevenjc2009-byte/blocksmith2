@@ -177,7 +177,7 @@ bool chunk_face_visible(const Chunk *c, const Chunk *const nb[NB_COUNT],
 }
 
 _Static_assert(BLOCK_AIR == 0, "solid_top() compares layers against zero bytes");
-_Static_assert(BLOCK_GRAVEL + 1 == BLOCK_COUNT, "first_air_layer() knows air, the torch and water are the blocks that are not solid: a block added after gravel must be checked");
+_Static_assert(BLOCK_MOSSY_COBBLESTONE + 1 == BLOCK_COUNT, "first_air_layer() knows air, the torch and water are the blocks that are not solid: a block added after mossy cobblestone must be checked");
 
 /* The first layer, from the bottom, with anything not solid in it (air, a
  * torch or water; WORLD_HEIGHT if none; 0 for a missing chunk, which is all

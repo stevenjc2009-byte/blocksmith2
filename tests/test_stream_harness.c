@@ -7,6 +7,7 @@
 #include "test.h"
 #include "test_stream_harness.h"
 #include "world.h"
+#include "worldgen.h"
 
 /* The stream tests' world (test_stream_harness.h). */
 
@@ -100,7 +101,7 @@ void check_settled(int pcx, int pcz, bool ground)
                 continue;
             }
             if (ground) {
-                terrain_fill_chunk(&c, s_w.seed, pcx + dx, pcz + dz);
+                world_gen_chunk(&c, s_w.seed, pcx + dx, pcz + dz);
                 wrong += memcmp(got, &c, sizeof c) != 0;
             }
         }
