@@ -41,5 +41,6 @@ void test_blocktex(void);
 void test_mesh(void);
 void test_look(void);
 void test_camera(void);
+void test_chunk(void);
 
 #endif

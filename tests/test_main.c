@@ -13,6 +13,7 @@ int main(void)
     test_mesh();
     test_look();
     test_camera();
+    test_chunk();
 
     printf("PC tests: %d checks, %d failed\n", g_checks, g_fails);
     if (g_checks == 0) {
