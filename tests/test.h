@@ -100,10 +100,15 @@ void test_held(void);
 void test_light_world(void);
 void test_weather(void);
 void test_weather_drops(void);
+void test_weather_climate(void); /* test_weather_climate.c, called by test_weather_drops() */
 void test_weather_save(void);
 void test_save_job(void);
 void test_water(void);
 void test_water_ref(void);
+void test_biome(void);
+void test_biome_tables(void); /* test_biome_tables.c, called by test_biome() */
+/* A biome's grass tint on a reference grass top face (6 vertices). */
+void test_ref_grass_tint(MeshVertex *face, int biome);
 
 /* Row 3-03's reference torch light (test_light.c): fills a table for chunk
  * c and its neighbours (nb as chunk_mesh.h, NULL entries air) from the rule

@@ -17,6 +17,7 @@ int main(void)
     test_chunk();
     test_chunk_ref();
     test_terrain();
+    test_biome();
     test_world();
     test_stream();
     test_walk();

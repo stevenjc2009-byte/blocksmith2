@@ -29,15 +29,24 @@ static uint32_t rgb(int r, int g, int b)
            ((uint32_t)clamp255(b) << 8) | 0xFF;
 }
 
-/* Grass seen from above: green with lighter and darker blades. */
-static uint32_t grass_texel(int x, int y)
+/* Grass round the colour (r, g, b), with lighter and darker blades. */
+static uint32_t grass_blades(int x, int y, int r, int g, int b)
 {
     uint32_t h = hash3((uint32_t)x, (uint32_t)y, 1);
     int d = wobble(h, 16);
 
     if ((h >> 12) % 7 == 0)
         d -= 22; /* a darker blade */
-    return rgb(88 + d * 6 / 10, 150 + d, 50 + d * 4 / 10);
+    return rgb(r + d * 6 / 10, g + d, b + d * 4 / 10);
+}
+
+/* Grass seen from above: light green. Light on purpose: the mesh multiplies
+ * it by the biome's tint (biome.h), which can only darken a colour, and the
+ * plains tint brings it back to the green it was before row 4-02 (about
+ * 88, 150, 50). */
+static uint32_t grass_texel(int x, int y)
+{
+    return grass_blades(x, y, 118, 178, 84);
 }
 
 /* Dirt: brown with darker crumbs and the odd pale pebble. */
@@ -73,7 +82,9 @@ static uint32_t grass_side_texel(int x, int y)
 
     if ((h >> 8) % 5 == 0)
         depth += 2;                 /* a longer tuft now and then */
-    return y < depth ? grass_texel(x, y) : dirt_texel(x, y + 7);
+    /* The side is not tinted (that would darken its dirt too), so its
+     * fringe keeps the plains green the grass always had. */
+    return y < depth ? grass_blades(x, y, 88, 150, 50) : dirt_texel(x, y + 7);
 }
 
 /* How far a texel is from the tile's nearest edge: 0 .. 7. */
@@ -173,6 +184,96 @@ static uint32_t water_texel(int x, int y)
            BLOCKTEX_WATER_ALPHA;
 }
 
+/* Snow: white with pale blue-grey shading and the odd bluer speck. */
+static uint32_t snow_texel(int x, int y)
+{
+    uint32_t h = hash3((uint32_t)x, (uint32_t)y, 11);
+    int d = wobble(h, 5);
+
+    if ((h >> 12) % 9 == 0)
+        return rgb(212 + d, 224 + d, 240 + d / 2);
+    return rgb(244 + d, 248 + d, 252);
+}
+
+/* Snowy grass side: dirt with a ragged fringe of snow along the top. */
+static uint32_t snowy_side_texel(int x, int y)
+{
+    uint32_t h = hash3((uint32_t)x, 0, 12);
+    int depth = 3 + (int)(h % 3);
+
+    if ((h >> 8) % 4 == 0)
+        depth += 2;
+    return y < depth ? snow_texel(x, y) : dirt_texel(x, y + 7);
+}
+
+/* Ice: pale blue, with lighter streaks running one way and faint cracks. */
+static uint32_t ice_texel(int x, int y)
+{
+    uint32_t h = hash3((uint32_t)x, (uint32_t)y, 13);
+    int d = wobble(h, 5);
+    int streak = ((x + y) % 7 == 0 || (x + y + 3) % 11 == 0) ? 18 : 0;
+
+    if ((h >> 12) % 17 == 0)
+        d -= 18; /* a crack */
+    return rgb(150 + d + streak, 196 + d + streak * 3 / 4, 238 + d / 2 + streak / 3);
+}
+
+/* Sandstone: sand-coloured. The top is smooth; the side has layers. */
+static uint32_t sandstone_top_texel(int x, int y)
+{
+    int d = wobble(hash3((uint32_t)x, (uint32_t)y, 14), 4);
+
+    return rgb(214 + d, 198 + d, 148 + d);
+}
+
+static uint32_t sandstone_side_texel(int x, int y)
+{
+    uint32_t h = hash3((uint32_t)x, (uint32_t)y, 15);
+    int d = wobble(h, 4);
+
+    if (y == 3 || y == 9 || y == 10)
+        d -= 22; /* a groove between layers */
+    else if (y == 2 || y == 8)
+        d += 8;
+    return rgb(212 + d, 195 + d, 144 + d);
+}
+
+static uint32_t red_sand_texel(int x, int y)
+{
+    uint32_t h = hash3((uint32_t)x, (uint32_t)y, 16);
+    int d = wobble(h, 7);
+
+    if ((h >> 12) % 8 == 0)
+        return rgb(160 + d, 78 + d, 32 + d); /* a darker grain */
+    if ((h >> 12) % 11 == 1)
+        return rgb(212 + d, 128 + d, 62 + d);
+    return rgb(190 + d, 102 + d, 44 + d);
+}
+
+/* Terracotta: a flat colour (r, g, b) with a faint grain; id keeps each
+ * colour's grain different. */
+static uint32_t terracotta_texel(int x, int y, int r, int g, int b, uint32_t id)
+{
+    uint32_t h = hash3((uint32_t)x, (uint32_t)y, id);
+    int d = wobble(h, 4);
+
+    if ((h >> 12) % 10 == 0)
+        d -= 6;
+    return rgb(r + d, g + d * 8 / 10, b + d * 7 / 10);
+}
+
+/* Gravel: grey and brown stones two or three texels across. */
+static uint32_t gravel_texel(int x, int y)
+{
+    uint32_t stone = hash3((uint32_t)(x + y / 3) / 3, (uint32_t)(y + x / 4) / 3, 17);
+    uint32_t h = hash3((uint32_t)x, (uint32_t)y, 18);
+    int v = 110 + (int)(stone % 56) - 28 + wobble(h, 7);
+
+    if (stone % 5 == 0)
+        return rgb(v + 14, v + 4, v - 12); /* a brownish stone */
+    return rgb(v, v, v + 2);
+}
+
 /* A loud check for tiles nothing uses yet. */
 static uint32_t missing_texel(int x, int y)
 {
@@ -192,6 +293,18 @@ static uint32_t tile_texel(int tile, int x, int y)
     case TILE_CLOUD:      return cloud_texel(x, y);
     case TILE_SAND:       return sand_texel(x, y);
     case TILE_WATER:      return water_texel(x, y);
+    case TILE_SNOW:       return snow_texel(x, y);
+    case TILE_SNOWY_GRASS_SIDE: return snowy_side_texel(x, y);
+    case TILE_ICE:        return ice_texel(x, y);
+    case TILE_SANDSTONE_TOP:  return sandstone_top_texel(x, y);
+    case TILE_SANDSTONE_SIDE: return sandstone_side_texel(x, y);
+    case TILE_RED_SAND:   return red_sand_texel(x, y);
+    case TILE_TERRACOTTA: return terracotta_texel(x, y, 152, 94, 67, 19);
+    case TILE_TERRACOTTA_WHITE:  return terracotta_texel(x, y, 209, 178, 161, 20);
+    case TILE_TERRACOTTA_YELLOW: return terracotta_texel(x, y, 186, 133, 36, 21);
+    case TILE_TERRACOTTA_RED:    return terracotta_texel(x, y, 143, 61, 46, 22);
+    case TILE_TERRACOTTA_BROWN:  return terracotta_texel(x, y, 77, 51, 36, 23);
+    case TILE_GRAVEL:     return gravel_texel(x, y);
     default:              return missing_texel(x, y);
     }
 }

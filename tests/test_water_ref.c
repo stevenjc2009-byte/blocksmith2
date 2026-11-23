@@ -50,8 +50,7 @@ static int ref_kind(const Chunk *const nb[NB_COUNT], int x, int y, int z)
     b = chunk_get(o, x, y, z);
     if (b == BLOCK_WATER)
         return WATER;
-    return (b == BLOCK_GRASS || b == BLOCK_DIRT || b == BLOCK_STONE || b == BLOCK_SAND) ? SOLID
-                                                                                          : OPEN;
+    return b != BLOCK_AIR && b != BLOCK_TORCH ? SOLID : OPEN; /* water is returned above */
 }
 
 /* One face of the water cell at (x, y, z), height h, torch light t. */

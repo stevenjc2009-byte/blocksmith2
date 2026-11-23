@@ -133,7 +133,7 @@ static void test_cold(void)
                 if (c != weather_cold(s, x, z)) /* the same answer each time */
                     other = -1000000;
             }
-        CHECK_NEAR((double)cold / (double)all, 0.3, 0.15);
+        CHECK_NEAR((double)cold / (double)all, 0.14, 0.08); /* the snowy temperature band */
         CHECK_EQ_INT(other > 0, 1);
         /* Along a line the map crosses over at most once a cell: wide
          * patches, no speckles, across x = 0 too. */
@@ -143,7 +143,7 @@ static void test_cold(void)
             changes += c != was;
             was = c;
         }
-        CHECK_EQ_INT(changes > 0 && changes <= 20000 / WEATHER_TEMP_CELL + 2, 1);
+        CHECK_EQ_INT(changes > 0 && changes <= 20000 / 128, 1);
         /* The warmth stays 0 .. 255 and eases from column to column (at
          * most 2 a block), both ways along x and z, either side of 0. */
         {

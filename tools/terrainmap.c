@@ -1,15 +1,22 @@
-/* Pictures of the ground for checking terrain.c by eye (roadmap row 4-01).
- * Host tool, not part of the game:
+/* Pictures of the ground for checking terrain.c by eye (roadmap rows 4-01
+ * and 4-02). Host tool, not part of the game:
  *
- *   gcc -O2 -Iinclude tools/terrainmap.c source/terrain.c \
- *       source/terrain_noise.c source/terrain_spawn.c -o terrainmap
+ *   gcc -O2 -Iinclude tools/terrainmap.c source/terrain.c source/terrain_ground.c  *       source/biome.c source/terrain_noise.c source/terrain_spawn.c -o terrainmap
  *   terrainmap <seed> <map.png> [<side.png> [<blocks per pixel>]]
  *
  * map.png: 512 x 512 blocks seen from above, centred on the spawn (red
- * cross). Sea blue (darker deeper), rivers light blue, sand, plains light
- * green, hills dark green, mountains grey to white with height, bare stone
- * darker; black dots where a column is 2 or more blocks above a neighbour
- * (cliffs). Lit from the north-west so slopes show.
+ * cross), each column coloured by its biome and lit from the north-west so
+ * slopes show. Legend (land biomes are lit by height; mountains show bare
+ * stone grey and snow white; seas get darker as they deepen):
+ *   plains yellow-green, forest green, birch forest pale green, dark
+ *   forest very dark green, taiga blue-green, snowy plains white-blue,
+ *   snowy taiga grey-blue, swamp olive, savanna yellow-brown, jungle
+ *   bright green, desert pale yellow, badlands orange-red;
+ *   ocean blue, warm ocean turquoise, cold ocean dark blue, frozen ocean
+ *   pale ice blue, beach cream, snowy beach white, river light blue,
+ *   frozen river very pale blue.
+ * Black dots mark where a column is 2 or more blocks above a neighbour
+ * (cliffs).
  * side.png: the row through the highest point, seen from the side, 2
  * pixels per block up. With more than one block per pixel the map shows a
  * wider area (cliff dots then mean nothing). */
@@ -17,6 +24,7 @@
 #include <stdlib.h>
 #include <string.h>
 
+#include "biome.h"
 #include "block.h"
 #include "terrain.h"
 
@@ -124,43 +132,56 @@ static int clampc(int v)
     return v < 0 ? 0 : v > 255 ? 255 : v;
 }
 
+/* The colour of each biome (red, green, blue), in BIOME_* order. */
+static const int k_biome_rgb[BIOME_COUNT][3] = {
+    { 140, 190, 80 },  /* plains */
+    { 70, 150, 50 },   /* forest */
+    { 130, 190, 100 }, /* birch forest */
+    { 35, 95, 40 },    /* dark forest */
+    { 70, 140, 120 },  /* taiga */
+    { 225, 235, 245 }, /* snowy plains */
+    { 150, 170, 185 }, /* snowy taiga */
+    { 100, 110, 50 },  /* swamp */
+    { 190, 170, 80 },  /* savanna */
+    { 40, 200, 40 },   /* jungle */
+    { 235, 220, 150 }, /* desert */
+    { 200, 100, 50 },  /* badlands */
+    { 40, 110, 220 },  /* ocean */
+    { 30, 190, 200 },  /* warm ocean */
+    { 30, 70, 160 },   /* cold ocean */
+    { 170, 210, 235 }, /* frozen ocean */
+    { 235, 215, 160 }, /* beach */
+    { 250, 250, 250 }, /* snowy beach */
+    { 70, 160, 240 },  /* river */
+    { 200, 225, 245 }, /* frozen river */
+};
+
 static void colour(const TerrainColumn *c, int *r, int *g, int *b)
 {
-    int h = c->height, d = TERRAIN_SEA - h;
+    int h = c->height, d = TERRAIN_SEA - h, lift = h - 64;
 
-    switch (c->kind) {
-    case TERRAIN_OCEAN:
-        *r = 40 - d;
-        *g = 110 - 3 * d;
-        *b = 220 - 4 * d;
+    *r = k_biome_rgb[c->biome][0];
+    *g = k_biome_rgb[c->biome][1];
+    *b = k_biome_rgb[c->biome][2];
+    if (h < TERRAIN_SEA) { /* under water: deeper is darker */
+        *r -= d;
+        *g -= 3 * d;
+        *b -= 4 * d;
         return;
-    case TERRAIN_RIVER:
-        if (h < TERRAIN_SEA) {
-            *r = 70; *g = 160; *b = 240;
-            return;
-        }
-        *r = 225; *g = 205; *b = 150;
-        return;
-    case TERRAIN_BEACH:
-        *r = 235; *g = 215; *b = 160;
-        return;
-    case TERRAIN_PLAINS:
-        *r = 120 + 4 * (h - 64); *g = 185 + 3 * (h - 64); *b = 80;
-        return;
-    case TERRAIN_HILLS:
-        *r = 60 + 3 * (h - 64); *g = 125 + 3 * (h - 64); *b = 45 + 2 * (h - 64);
-        return;
-    default:
-        if (h <= TERRAIN_SEA) {
-            *r = 70; *g = 160; *b = 240;
-        } else if (c->surface == BLOCK_STONE) {
-            *r = *g = *b = 70 + 2 * (h - 64);
-        } else if (h >= 104) {
+    }
+    if (c->kind == TERRAIN_MOUNTAIN && h > TERRAIN_SEA) {
+        if (c->surface == BLOCK_SNOW)
             *r = *g = *b = 245;
-        } else {
-            *r = 100 + 2 * (h - 64); *g = 125 + 2 * (h - 64); *b = 85 + 2 * (h - 64);
-        }
+        else if (c->surface == BLOCK_STONE)
+            *r = *g = *b = 70 + 2 * lift;
+        else
+            *r += 2 * lift, *g += 2 * lift, *b += 2 * lift;
         return;
+    }
+    if (c->kind == TERRAIN_HILLS || c->kind == TERRAIN_PLAINS) {
+        *r -= lift > 0 ? lift : 0;
+        *g -= lift > 0 ? lift : 0;
+        *b -= lift > 0 ? lift : 0;
     }
 }
 
@@ -265,9 +286,9 @@ int main(int argc, char **argv)
                 if (by == c->height) {
                     colour(c, &r, &g, &b);
                     if (c->kind == TERRAIN_OCEAN || c->kind == TERRAIN_RIVER)
-                        r = 225, g = 205, b = 150;
+                        r = 225, g = 205, b = 150; /* the sea floor, not the water */
                 } else if (by < c->height) {
-                    r = g = b = by >= c->height - TERRAIN_DIRT && c->surface == BLOCK_GRASS ? 0 : 120;
+                    r = g = b = by >= c->height - c->depth && c->under == BLOCK_DIRT ? 0 : 120;
                     if (r == 0)
                         r = 130, g = 95, b = 60;
                 } else if (by <= TERRAIN_SEA) {

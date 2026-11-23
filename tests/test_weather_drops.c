@@ -16,7 +16,7 @@ static int in_range(float v, float lo, float hi)
     return v >= lo && v <= hi;
 }
 
-/* A seed whose cold map is all cold (or all warm) round column (ex, ez). */
+/* A seed whose climate is all cold (or all warm), and never dry, round column (ex, ez). */
 static uint32_t seed_where(bool cold, int ex, int ez)
 {
     uint32_t s;
@@ -26,7 +26,7 @@ static uint32_t seed_where(bool cold, int ex, int ez)
         ok = 1;
         for (dz = -WEATHER_RADIUS; dz <= WEATHER_RADIUS && ok; dz++)
             for (dx = -WEATHER_RADIUS; dx <= WEATHER_RADIUS && ok; dx++)
-                ok = weather_cold(s, ex + dx, ez + dz) == cold;
+                ok = weather_cold(s, ex + dx, ez + dz) == cold && !weather_dry(s, ex + dx, ez + dz);
         if (ok)
             return s;
     }
@@ -308,4 +308,5 @@ void test_weather_drops(void)
     test_motion();
     test_world_fixed();
     test_roof();
+    test_weather_climate();
 }

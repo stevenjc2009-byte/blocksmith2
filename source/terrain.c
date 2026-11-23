@@ -4,6 +4,7 @@
 #include <string.h>
 
 #include "block.h"
+#include "terrain_ground.h"
 #include "terrain_noise.h"
 
 /* Noise values are fractions written as whole numbers out of ONE. Heights
@@ -15,7 +16,7 @@
 /* The slow layers are worked out every CELL blocks and blended in between,
  * which is much quicker and still smooth: a straight blend between points
  * is never steeper than the ground it was taken from. */
-#define CELL 4
+#define CELL BIOME_CELL
 
 /* How each column is made, from the inputs below:
  *
@@ -84,10 +85,12 @@
 #define CLIFF_RANGE PCT(30)          /* and are whole this much further */
 #define CRAG0 PCT(45)                /* ledges only where `crag` is above this */
 #define CRAG_RANGE PCT(15)
+#define SWAMP_SWELL PCT(35)          /* swamps only where the plains swell is below this */
 #define SOFT_TOP BLK(105 - TERRAIN_SEA - 1) /* above this, peaks grow half as fast */
-#define STONE_TOP 100                /* bare stone from here up */
 
-enum { IN_CONT, IN_EROS, IN_HILL, IN_SWELL, IN_RIVER, IN_MOUNT, IN_PHASE, IN_CRAG, IN_BLEND,
+enum { IN_CONT, IN_EROS, IN_HILL, IN_SWELL, IN_RIVER, IN_MOUNT, IN_PHASE, IN_CRAG,
+       IN_TEMP, IN_HUMID, /* the climate (biome.h), only for the blocks, never the height */
+       IN_BLEND,
        IN_COAST_SLOPE = IN_BLEND, IN_COUNT };
 
 /* The slow layers: { id, a, b, shift } (terrain_noise.h). */
@@ -137,6 +140,7 @@ static void slow_inputs(uint32_t seed, int x, int z, int in[IN_COUNT])
     in[IN_MOUNT] = (13 * noise_value(seed, &k_mount1, x, z) + 7 * noise_value(seed, &k_mount2, x, z)) / 20;
     in[IN_PHASE] = noise_value(seed, &k_phase, x, z);
     in[IN_CRAG] = noise_value(seed, &k_crag, x, z);
+    biome_climate_point(seed, x, z, &in[IN_TEMP], &in[IN_HUMID]);
 }
 
 /* The inputs at (fx, fz) blocks into the cell with grid points g00 (west,
@@ -199,6 +203,7 @@ static int mountain_raise(uint32_t seed, int x, int z, const int in[IN_COUNT], i
 static TerrainColumn make_column(uint32_t seed, int x, int z, const int in[IN_COUNT])
 {
     TerrainColumn col;
+    GroundIn gi;
     int s = in[IN_CONT] - COAST;
     int off_mid = abs(in[IN_RIVER]) - RIVER_EDGE;
     int amp = 0, hills = 0, land, raise = 0, cliff = 0, river, rel, h, a;
@@ -225,23 +230,21 @@ static TerrainColumn make_column(uint32_t seed, int x, int z, const int in[IN_CO
         rel = SOFT_TOP + (rel - SOFT_TOP) / 2;
     h = min_int(TERRAIN_SEA + 1 + floor_div(rel, ONE), TERRAIN_PEAK);
 
+    gi.temp = in[IN_TEMP];
+    gi.humid = in[IN_HUMID];
+    gi.inland = s >= 0;
+    gi.cliff = cliff;
+    gi.flat = amp < BLK(1) && in[IN_SWELL] < SWAMP_SWELL;
     col.height = h;
-    col.surface = BLOCK_GRASS;
-    if (a > 0) {
+    if (a > 0)
         col.kind = TERRAIN_MOUNTAIN;
-        if (h <= TERRAIN_SEA)
-            col.surface = BLOCK_SAND;
-        else if (cliff || h >= STONE_TOP)
-            col.surface = BLOCK_STONE;
-    } else if (h <= TERRAIN_SEA) {
-        col.surface = BLOCK_SAND;
+    else if (h <= TERRAIN_SEA)
         col.kind = s >= 0 ? TERRAIN_RIVER : h == TERRAIN_SEA ? TERRAIN_BEACH : TERRAIN_OCEAN;
-    } else if (h <= TERRAIN_SEA + BEACH_UP && s < BEACH_W * in[IN_COAST_SLOPE]) {
-        col.surface = BLOCK_SAND;
+    else if (h <= TERRAIN_SEA + BEACH_UP && s < BEACH_W * in[IN_COAST_SLOPE])
         col.kind = TERRAIN_BEACH;
-    } else {
+    else
         col.kind = amp >= BLK(HILLS_KIND) ? TERRAIN_HILLS : TERRAIN_PLAINS;
-    }
+    terrain_ground(&col, &gi);
     return col;
 }
 
@@ -263,6 +266,11 @@ int terrain_height(uint32_t seed, int x, int z)
     return terrain_column(seed, x, z).height;
 }
 
+Biome terrain_biome(uint32_t seed, int x, int z)
+{
+    return (Biome)terrain_column(seed, x, z).biome;
+}
+
 void terrain_chunk_columns(uint32_t seed, int cx, int cz,
                            TerrainColumn out[CHUNK_SIZE][CHUNK_SIZE])
 {
@@ -281,32 +289,5 @@ void terrain_chunk_columns(uint32_t seed, int cx, int cz,
             j = z / CELL;
             blend(g[j][i], g[j][i + 1], g[j + 1][i], g[j + 1][i + 1], x % CELL, z % CELL, in);
             out[z][x] = make_column(seed, x0 + x, z0 + z, in);
-        }
-}
-
-void terrain_fill_chunk(Chunk *c, uint32_t seed, int cx, int cz)
-{
-    TerrainColumn col[CHUNK_SIZE][CHUNK_SIZE];
-    int x, y, z, low = WORLD_HEIGHT;
-
-    terrain_chunk_columns(seed, cx, cz, col);
-    for (z = 0; z < CHUNK_SIZE; z++)
-        for (x = 0; x < CHUNK_SIZE; x++)
-            low = min_int(low, col[z][x].height - TERRAIN_DIRT);
-    /* Stone up to the lowest dirt, air above; then each column. */
-    memset(c->blocks, BLOCK_STONE, (size_t)low * sizeof c->blocks[0]);
-    memset(c->blocks[low], BLOCK_AIR, (size_t)(WORLD_HEIGHT - low) * sizeof c->blocks[0]);
-    for (z = 0; z < CHUNK_SIZE; z++)
-        for (x = 0; x < CHUNK_SIZE; x++) {
-            int h = col[z][x].height, top = col[z][x].surface;
-            int under = top == BLOCK_GRASS ? BLOCK_DIRT : top;
-
-            for (y = low; y < h - TERRAIN_DIRT; y++)
-                c->blocks[y][z][x] = BLOCK_STONE;
-            for (; y < h; y++)
-                c->blocks[y][z][x] = (uint8_t)under;
-            c->blocks[h][z][x] = (uint8_t)top;
-            for (y = h + 1; y <= TERRAIN_SEA; y++)
-                c->blocks[y][z][x] = BLOCK_WATER;
         }
 }

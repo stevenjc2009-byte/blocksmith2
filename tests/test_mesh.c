@@ -1,5 +1,6 @@
 #include <math.h>
 
+#include "biome.h"
 #include "block.h"
 #include "blocktex.h"
 #include "mesh.h"
@@ -202,5 +203,22 @@ void test_mesh(void)
             const MeshVertex *p = &v[f * MESH_FACE_VERTS + i];
             CHECK_EQ_INT(p->u >= uv[0] && p->u <= uv[2] && p->v >= uv[1] && p->v <= uv[3], 1);
         }
+    }
+    /* A held grass block's top has the plains tint, as in a plains chunk
+     * (row 4-02); its sides and a dirt block's top have none. */
+    {
+        float g[3];
+
+        biome_grass_rgb(BIOME_PLAINS, g);
+        mesh_block(v, 0, 0, 0, BLOCK_GRASS);
+        for (i = 0; i < MESH_FACE_VERTS; i++) {
+            const MeshVertex *p = &v[FACE_POS_Y * MESH_FACE_VERTS + i];
+            CHECK_NEAR(p->r, g[0], TOL);
+            CHECK_NEAR(p->g, g[1], TOL);
+            CHECK_NEAR(p->b, g[2], TOL);
+        }
+        CHECK_NEAR(v[FACE_POS_X * MESH_FACE_VERTS].g, 0.8, TOL);
+        mesh_block(v, 0, 0, 0, BLOCK_DIRT);
+        CHECK_NEAR(v[FACE_POS_Y * MESH_FACE_VERTS].g, 1.0, TOL);
     }
 }

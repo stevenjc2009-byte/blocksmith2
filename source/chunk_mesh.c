@@ -1,6 +1,7 @@
 #include <stddef.h>
 #include <string.h>
 
+#include "biome.h"
 #include "block.h"
 #include "chunk_mesh.h"
 #include "light.h"
@@ -53,6 +54,7 @@ static const unsigned char k_across[FACE_COUNT][2] = {
 static uint8_t s_pad[WORLD_HEIGHT + 2][PAD][PAD];
 static uint8_t s_solid[256];                /* block_solid() of every byte */
 static float s_bright[LIGHT_TORCH + 1];     /* light_brightness() of every level */
+static float s_tint[BIOME_COUNT][3];        /* biome_grass_rgb() of every biome */
 static bool s_tables;
 
 /* One step out of each face (FACE_* order) in s_pad, and one step along
@@ -71,6 +73,8 @@ static void fill_pad(const Chunk *c, const Chunk *const nb[NB_COUNT], int ylo, i
             s_solid[i] = block_solid(i);
         for (i = 0; i <= LIGHT_TORCH; i++)
             s_bright[i] = light_brightness(i);
+        for (i = 0; i < BIOME_COUNT; i++)
+            biome_grass_rgb(i, s_tint[i]);
         s_tables = true;
     }
     for (j = 0; j < 3; j++)
@@ -150,6 +154,20 @@ static void face_ao(const uint8_t *o, int x, int y, int z, int f, bool lit, unsi
     }
 }
 
+/* Multiply a face's colours by a biome's grass tint. Only the top of grass
+ * is tinted: its sides show dirt with a thin fringe of grass, and tinting
+ * the whole face would tint the dirt too. */
+static void tint_face(MeshVertex *v, const float rgb[3])
+{
+    int i;
+
+    for (i = 0; i < MESH_FACE_VERTS; i++) {
+        v[i].r *= rgb[0];
+        v[i].g *= rgb[1];
+        v[i].b *= rgb[2];
+    }
+}
+
 bool chunk_face_visible(const Chunk *c, const Chunk *const nb[NB_COUNT],
                         int x, int y, int z, int face)
 {
@@ -159,7 +177,7 @@ bool chunk_face_visible(const Chunk *c, const Chunk *const nb[NB_COUNT],
 }
 
 _Static_assert(BLOCK_AIR == 0, "solid_top() compares layers against zero bytes");
-_Static_assert(BLOCK_COUNT == 7, "first_air_layer() knows air, the torch and water are the blocks that are not solid");
+_Static_assert(BLOCK_GRAVEL + 1 == BLOCK_COUNT, "first_air_layer() knows air, the torch and water are the blocks that are not solid: a block added after gravel must be checked");
 
 /* The first layer, from the bottom, with anything not solid in it (air, a
  * torch or water; WORLD_HEIGHT if none; 0 for a missing chunk, which is all
@@ -274,6 +292,8 @@ int chunk_mesh_build(const Chunk *c, const Chunk *const nb[NB_COUNT], float ox, 
                     face_ao(o, x, y, z, f, lit, ao, t);
                     mesh_face_lit(out + n, ox + (float)x, (float)y, oz + (float)z, f,
                                   block_face_tile(b, f), ao, t);
+                    if (b == BLOCK_GRASS && f == FACE_POS_Y) /* the biome's tint (row 4-02) */
+                        tint_face(out + n, s_tint[c->biome[z][x] < BIOME_COUNT ? c->biome[z][x] : 0]);
                     n += MESH_FACE_VERTS;
                 }
             }

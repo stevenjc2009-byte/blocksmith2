@@ -44,24 +44,40 @@ static void load_area(uint32_t seed, int cx0, int cz0, int chunks)
         }
 }
 
-/* The surface block and height a column of its kind should have. */
+static int is_band(int b)
+{
+    return b >= BLOCK_TERRACOTTA && b <= BLOCK_TERRACOTTA_BROWN;
+}
+
+static int is_sea_floor(int b)
+{
+    return b == BLOCK_SAND || b == BLOCK_GRAVEL;
+}
+
+/* The surface block and height a column of its kind should have (row
+ * 4-02: the biome picks which of the surface blocks). */
 static int surface_ok(const TerrainColumn *c)
 {
+    int s = c->surface;
+
     switch (c->kind) {
     case TERRAIN_OCEAN:
-        return c->surface == BLOCK_SAND && c->height < TERRAIN_SEA;
+        return is_sea_floor(s) && c->height < TERRAIN_SEA;
     case TERRAIN_RIVER:
-        return c->surface == BLOCK_SAND && c->height <= TERRAIN_SEA;
+        return is_sea_floor(s) && c->height <= TERRAIN_SEA;
     case TERRAIN_BEACH:
-        return c->surface == BLOCK_SAND && c->height >= TERRAIN_SEA && c->height <= TERRAIN_SEA + 3;
+        return (s == BLOCK_SAND || s == BLOCK_SNOW || s == BLOCK_RED_SAND) && c->height >= TERRAIN_SEA &&
+               c->height <= TERRAIN_SEA + 3;
     case TERRAIN_PLAINS:
     case TERRAIN_HILLS:
-        return c->surface == BLOCK_GRASS && c->height > TERRAIN_SEA;
+        return (s == BLOCK_GRASS || s == BLOCK_SNOWY_GRASS || s == BLOCK_SAND || s == BLOCK_RED_SAND ||
+                is_band(s)) && c->height > TERRAIN_SEA;
     case TERRAIN_MOUNTAIN:
-        /* Under the water (a river at its foot) it is a sand bed too. */
+        /* Under the water (a river at its foot) it is a sea floor too. */
         if (c->height <= TERRAIN_SEA)
-            return c->surface == BLOCK_SAND;
-        return c->surface == BLOCK_GRASS || c->surface == BLOCK_STONE;
+            return is_sea_floor(s);
+        return s == BLOCK_GRASS || s == BLOCK_SNOWY_GRASS || s == BLOCK_STONE || s == BLOCK_SNOW ||
+               s == BLOCK_SAND || s == BLOCK_RED_SAND || is_band(s);
     default:
         return 0;
     }
@@ -95,7 +111,7 @@ static void check_area(int size, AreaCheck *r)
 
             r->out_of_range += c->height < TERRAIN_FLOOR || c->height > TERRAIN_PEAK;
             r->bad_surface += !surface_ok(c);
-            r->stone += c->surface == BLOCK_STONE;
+            r->stone += c->surface == BLOCK_STONE || c->surface == BLOCK_SNOW || is_band(c->surface);
             if (c->kind >= 0 && c->kind < TERRAIN_KIND_COUNT)
                 r->kinds[c->kind]++;
             if (x + 1 < size)
@@ -218,7 +234,7 @@ static void test_seeds(void)
 }
 
 /* Chunk (cx, cz) filled matches its columns block for block: stone, then
- * TERRAIN_DIRT of what goes under the surface, the surface, still water up
+ * the layers under the surface, the surface, still water up
  * to TERRAIN_SEA, air above. Counts the water blocks into *water. */
 static void check_fill(uint32_t seed, int cx, int cz, int *water)
 {
@@ -230,14 +246,18 @@ static void check_fill(uint32_t seed, int cx, int cz, int *water)
     for (z = 0; z < CHUNK_SIZE; z++)
         for (x = 0; x < CHUNK_SIZE; x++) {
             TerrainColumn col = terrain_column(seed, cx * CHUNK_SIZE + x, cz * CHUNK_SIZE + z);
-            int h = col.height, under = col.surface == BLOCK_GRASS ? BLOCK_DIRT : col.surface;
+            int h = col.height;
 
             for (y = 0; y < WORLD_HEIGHT; y++) {
                 int b = chunk_get(&c, x, y, z);
+                int under = col.under == BLOCK_TERRACOTTA ? terrain_band_block(y) : col.under;
                 int want = y > TERRAIN_SEA && y > h ? BLOCK_AIR
                          : y > h ? BLOCK_WATER
                          : y == h ? col.surface
-                         : y >= h - TERRAIN_DIRT ? under : BLOCK_STONE;
+                         : y >= h - col.depth ? under : BLOCK_STONE;
+
+                if (y == TERRAIN_SEA && h < TERRAIN_SEA && biome_frozen((Biome)col.biome))
+                    want = BLOCK_ICE; /* the frozen seas and rivers */
 
                 wrong += b != want;
                 *water += b == BLOCK_WATER;

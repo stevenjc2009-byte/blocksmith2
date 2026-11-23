@@ -1,6 +1,7 @@
 #include <stdlib.h>
 #include <string.h>
 
+#include "biome.h"
 #include "block.h"
 #include "chunk.h"
 #include "chunk_mesh.h"
@@ -86,6 +87,8 @@ static void test_single_block(void)
     n = build(k_none, 32.0f, -16.0f, &v);
     CHECK_EQ_INT(n, MESH_BLOCK_VERTS);
     CHECK_EQ_INT(mesh_block(ref, 37.0f, 10.0f, -11.0f, BLOCK_GRASS), MESH_BLOCK_VERTS);
+    /* row 4-02: a cleared chunk is plains, and mesh_block() gives a grass
+     * top the plains tint itself */
     CHECK_EQ_INT(memcmp(v, ref, sizeof ref) == 0, 1);
     free(v);
 }

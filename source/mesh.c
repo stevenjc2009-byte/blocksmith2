@@ -1,5 +1,6 @@
 #include <stdlib.h>
 
+#include "biome.h"
 #include "block.h"
 #include "blocktex.h"
 #include "mesh.h"
@@ -132,5 +133,17 @@ int mesh_block(MeshVertex *out, float x, float y, float z, int block)
     for (face = 0; face < FACE_COUNT; face++)
         mesh_face(out + face * MESH_FACE_VERTS, x, y, z, face,
                   block_face_tile(block, face));
+    if (block == BLOCK_GRASS) { /* the plains tint on its top (row 4-02), as in a plains chunk */
+        MeshVertex *top = out + FACE_POS_Y * MESH_FACE_VERTS;
+        float rgb[3];
+        int i;
+
+        biome_grass_rgb(BIOME_PLAINS, rgb);
+        for (i = 0; i < MESH_FACE_VERTS; i++) {
+            top[i].r *= rgb[0];
+            top[i].g *= rgb[1];
+            top[i].b *= rgb[2];
+        }
+    }
     return MESH_BLOCK_VERTS;
 }

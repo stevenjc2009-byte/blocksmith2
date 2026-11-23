@@ -49,7 +49,8 @@ HOST_BUILD	:=	build-host
 CORE_SOURCES	:=	source/world_coords.c source/framebuffer.c source/mat4.c \
 			source/texswizzle.c source/blocktex.c source/block.c source/mesh.c \
 			source/look.c source/camera.c source/chunk.c source/chunk_mesh.c \
-			source/terrain.c source/terrain_noise.c source/terrain_spawn.c source/world.c \
+			source/terrain.c source/terrain_ground.c source/terrain_fill.c source/biome.c \
+			source/terrain_noise.c source/terrain_spawn.c source/world.c \
 			source/walk.c source/player.c source/raycast.c source/place.c source/hotbar.c \
 			source/font.c source/fps.c source/stream.c source/settings.c \
 			source/seed.c source/newworld.c source/save.c source/save_files.c source/saveui.c \

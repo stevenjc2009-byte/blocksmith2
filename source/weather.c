@@ -65,30 +65,13 @@ void weather_step(Weather *w, float dt)
         w->strength = w->strength - fade > 0.0f ? w->strength - fade : 0.0f;
 }
 
-#ifndef WEATHER_TEST_COLD_X
-static int floor_div(int a, int size)
+/* Snow, and no rain at all, of a place with this climate whose highest
+ * block is at y top - 1. */
+static void climate_weather(int temp, int humid, int top, bool *snow, bool *dry)
 {
-    return a >= 0 ? a / size : -((size - 1 - a) / size);
+    *snow = temp < BIOME_T_COOL || top - 1 >= biome_snow_line(temp);
+    *dry = biome_dry(biome_land(temp, humid));
 }
-
-/* The cold map's value 0 .. 255 at its point (i, j). */
-static int64_t temp_point(uint32_t seed, int i, int j)
-{
-    uint32_t h = mix(seed ^ 0x434F4C44u); /* "COLD" */
-
-    h = mix(h ^ (uint32_t)i);
-    h = mix(h ^ (uint32_t)j);
-    return (int64_t)(h >> 24);
-}
-
-/* t from 0 to WEATHER_TEMP_CELL, eased at both ends, same range. */
-static int64_t smooth(int64_t t)
-{
-    const int64_t c = WEATHER_TEMP_CELL;
-
-    return t * t * (3 * c - 2 * t) / (c * c);
-}
-#endif
 
 int weather_temp(uint32_t seed, int x, int z)
 {
@@ -97,19 +80,93 @@ int weather_temp(uint32_t seed, int x, int z)
     (void)z;
     return x < WEATHER_TEST_COLD_X ? 0 : 255;
 #else
-    const int64_t c = WEATHER_TEMP_CELL;
-    int i = floor_div(x, WEATHER_TEMP_CELL), j = floor_div(z, WEATHER_TEMP_CELL);
-    int64_t sx = smooth(x - (int64_t)i * c), sz = smooth(z - (int64_t)j * c);
-    int64_t near = temp_point(seed, i, j) * (c - sx) + temp_point(seed, i + 1, j) * sx;
-    int64_t far = temp_point(seed, i, j + 1) * (c - sx) + temp_point(seed, i + 1, j + 1) * sx;
+    int temp, humid;
 
-    return (int)((near * (c - sz) + far * sz) / (c * c));
+    biome_climate(seed, x, z, &temp, &humid);
+    return temp / BIOME_UNIT;
 #endif
 }
 
 bool weather_cold(uint32_t seed, int x, int z)
 {
     return weather_temp(seed, x, z) < WEATHER_COLD;
+}
+
+bool weather_snows(uint32_t seed, int x, int z, int top)
+{
+#ifdef WEATHER_TEST_COLD_X
+    (void)top;
+    return weather_cold(seed, x, z);
+#else
+    int temp, humid;
+    bool snow, dry;
+
+    biome_climate(seed, x, z, &temp, &humid);
+    climate_weather(temp, humid, top, &snow, &dry);
+    return snow;
+#endif
+}
+
+bool weather_dry(uint32_t seed, int x, int z)
+{
+#ifdef WEATHER_TEST_COLD_X
+    (void)seed;
+    (void)x;
+    (void)z;
+    return false;
+#else
+    int temp, humid;
+    bool snow, dry;
+
+    biome_climate(seed, x, z, &temp, &humid);
+    climate_weather(temp, humid, 0, &snow, &dry);
+    return dry;
+#endif
+}
+
+/* The climate at the grid points biome_climate() blends, for the columns
+ * round the eye: worked out once a build, not once a column. */
+#define GRID_N (2 * WEATHER_RADIUS / BIOME_CELL + 3)
+
+typedef struct {
+    int x0, z0; /* world column of grid point [0][0] */
+    int pt[GRID_N][GRID_N][2];
+} ClimateGrid;
+
+static int floor_div(int a, int size)
+{
+    return a >= 0 ? a / size : -((size - 1 - a) / size);
+}
+
+static void grid_fill(ClimateGrid *g, uint32_t seed, int ex, int ez)
+{
+    int i, j;
+
+    g->x0 = floor_div(ex - WEATHER_RADIUS, BIOME_CELL) * BIOME_CELL;
+    g->z0 = floor_div(ez - WEATHER_RADIUS, BIOME_CELL) * BIOME_CELL;
+    for (j = 0; j < GRID_N; j++)
+        for (i = 0; i < GRID_N; i++)
+            biome_climate_point(seed, g->x0 + i * BIOME_CELL, g->z0 + j * BIOME_CELL,
+                                &g->pt[j][i][0], &g->pt[j][i][1]);
+}
+
+/* Snow and dryness of column (x, z), whose highest block is at top - 1. */
+static void grid_weather(const ClimateGrid *g, uint32_t seed, int x, int z, int top, bool *snow,
+                         bool *dry)
+{
+#ifdef WEATHER_TEST_COLD_X
+    (void)g;
+    (void)top;
+    *snow = weather_cold(seed, x, z);
+    *dry = false;
+#else
+    int i = (x - g->x0) / BIOME_CELL, j = (z - g->z0) / BIOME_CELL, c[2];
+
+    (void)seed;
+    biome_climate_blend(g->pt[j][i], g->pt[j][i + 1], g->pt[j + 1][i], g->pt[j + 1][i + 1],
+                        (x - g->x0) % BIOME_CELL, (z - g->z0) % BIOME_CELL, c);
+    climate_weather(c[0], c[1], top, snow, dry);
+#endif
 }
 
 static float clamp01(float v)
@@ -197,11 +254,13 @@ int weather_build(const Weather *w, const World *world, const Camera *cam,
     int ex = (int)floorf(cam->x), ez = (int)floorf(cam->z), dx, dz, k, n = 0;
     float lo = cam->y - 0.5f * WEATHER_BAND, f[3], rt[3], up[3], uv[4], u, v;
     float rain_a[3], rain_b[3], snow_a[3], snow_b[3];
+    ClimateGrid grid;
     uint32_t limit;
 
     if (!(w->strength > 0.0f))
         return 0;
     limit = (uint32_t)(clamp01(w->strength) * 256.0f);
+    grid_fill(&grid, world->seed, ex, ez);
     blocktex_tile_uv(TILE_CLOUD, uv);
     u = 0.5f * (uv[0] + uv[2]);
     v = 0.5f * (uv[1] + uv[3]);
@@ -223,14 +282,16 @@ int weather_build(const Weather *w, const World *world, const Camera *cam,
             int x = ex + dx, z = ez + dz;
             uint32_t h = mix(mix(0x52414E44u ^ (uint32_t)x) ^ (uint32_t)z); /* "RAND" */
             float top;
-            bool cold;
+            bool cold, dry;
 
             if (dx * dx + dz * dz > r * r || (h & 255u) >= limit)
                 continue;
             top = column_top(world, x, z);
             if (top >= lo + WEATHER_BAND)
                 continue; /* roofed all the way up */
-            cold = weather_cold(world->seed, x, z);
+            grid_weather(&grid, world->seed, x, z, (int)top, &cold, &dry);
+            if (dry)
+                continue; /* desert, savanna, badlands: none at all */
             for (k = 0; k < WEATHER_PER_COLUMN; k++) {
                 uint32_t hk = mix(h + (uint32_t)(k + 1) * 0x9E3779B9u);
                 /* A flake drifts, so it starts nearer its column's middle

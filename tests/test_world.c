@@ -1,6 +1,7 @@
 #include <stdlib.h>
 #include <string.h>
 
+#include "biome.h"
 #include "block.h"
 #include "chunk.h"
 #include "chunk_mesh.h"
@@ -164,7 +165,9 @@ static void test_generate(uint32_t seed)
              * under grass (sand under sand, stone under stone). */
             wrong += world_get(&s_w, x, h, z) != col.surface;
             wrong += world_get(&s_w, x, h + 1, z) != (h < TERRAIN_SEA ? BLOCK_WATER : BLOCK_AIR);
-            wrong += world_get(&s_w, x, h - 1, z) != (col.surface == BLOCK_GRASS ? BLOCK_DIRT : col.surface);
+            wrong += world_get(&s_w, x, h - 1, z) !=
+                     (col.depth == 0 ? BLOCK_STONE
+                      : col.under == BLOCK_TERRACOTTA ? terrain_band_block(h - 1) : col.under);
             wrong += world_get(&s_w, x, 0, z) != BLOCK_STONE;
         }
     CHECK_EQ_INT(wrong, 0);
@@ -309,6 +312,8 @@ static int ref_build(int cx, int cz, MeshVertex *out)
                         for (k = 0; k < 4; k++)
                             ao[k] = (unsigned char)test_ref_ao(world_solid, NULL, wx, y, wz, f, k);
                         mesh_face_ao(out + n, (float)wx, (float)y, (float)wz, f, block_face_tile(b, f), ao);
+                        if (b == BLOCK_GRASS && f == FACE_POS_Y) /* row 4-02: biome tint */
+                            test_ref_grass_tint(out + n, world_chunk(&s_w, cx, cz)->biome[z][x]);
                         n += MESH_FACE_VERTS;
                     }
             }

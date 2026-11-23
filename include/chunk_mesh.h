@@ -20,6 +20,11 @@
  * - past the chunk's side (or corner) it is the neighbour chunk's block, or
  *   air when that neighbour is NULL (or the whole list is NULL).
  *
+ * Biome tint (row 4-02): the top face of a BLOCK_GRASS cell has its vertex
+ * r,g,b multiplied by biome_grass_rgb() of the column's biome (c->biome),
+ * so the lightened grass tile reads green in a forest, yellow in a savanna,
+ * dark in a swamp. Side and bottom faces and other blocks are not tinted.
+ *
  * Corner shadows (roadmap row 3-01): each corner of a seen face gets a
  * shadow level (mesh.h mesh_face_ao()) from the cells round it in the layer
  * just outside the face (the layer the face looks into). In that layer the

@@ -11,6 +11,7 @@ static int inside(int x, int y, int z)
 void chunk_clear(Chunk *c)
 {
     memset(c->blocks, BLOCK_AIR, sizeof c->blocks);
+    memset(c->biome, 0, sizeof c->biome);
 }
 
 int chunk_get(const Chunk *c, int x, int y, int z)

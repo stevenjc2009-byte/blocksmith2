@@ -1,6 +1,7 @@
 #include <stdlib.h>
 #include <string.h>
 
+#include "biome.h"
 #include "block.h"
 #include "chunk.h"
 #include "chunk_mesh.h"
@@ -63,8 +64,7 @@ static int ref_solid(const Chunk *c, const Chunk *const nb[NB_COUNT], int x, int
     if (o == NULL)
         return 0;
     x = chunk_get(o, x, y, z);
-    return x == BLOCK_GRASS || x == BLOCK_DIRT || x == BLOCK_STONE ||
-           x == BLOCK_SAND; /* not air, a torch or water */
+    return x != BLOCK_AIR && x != BLOCK_TORCH && x != BLOCK_WATER; /* every other block */
 }
 
 typedef struct {
@@ -176,6 +176,8 @@ static int ref_mesh(const Chunk *const nb[NB_COUNT], float ox, float oz, MeshVer
                             }
                             mesh_face_lit(out + faces * MESH_FACE_VERTS, ox + (float)x, (float)y,
                                           oz + (float)z, f, block_face_tile(b, f), ao, t);
+                            if (b == BLOCK_GRASS && f == FACE_POS_Y) /* row 4-02: biome tint */
+                                test_ref_grass_tint(out + faces * MESH_FACE_VERTS, s_c.biome[z][x]);
                         }
                         faces++;
                     }

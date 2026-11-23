@@ -4,6 +4,7 @@
 #include <stdbool.h>
 #include <stdint.h>
 
+#include "biome.h"
 #include "camera.h"
 #include "mesh.h"
 #include "sky.h"
@@ -28,9 +29,13 @@
  * block (never under a roof). In a warm column a drop is a thin streak of
  * rain falling fast, in a cold one a flake of snow falling slowly and
  * drifting. A drop belongs to its column of the world, not to the eye, so
- * walking does not drag the rain along. Which places are cold is a fixed
- * map from the seed: wide patches of cold and warm, WEATHER_TEMP_CELL
- * blocks between the map's points (biomes, row 4-02, will bring their own). */
+ * walking does not drag the rain along.
+ *
+ * Which places are cold, and which dry, comes from the biomes (row 4-02,
+ * biome.h): snow in the snowy temperature band and on mountains from the
+ * snow line up (lower where it is cold), rain elsewhere, and nothing at
+ * all in deserts, savannas and badlands (which come from the same climate:
+ * a dry place is dry over its seas too). */
 
 #define WEATHER_CLEAR_MIN 600.0f  /* seconds: 10 to 25 minutes clear */
 #define WEATHER_CLEAR_MAX 1500.0f
@@ -55,16 +60,16 @@
  * above comes round a whole number of times in it, so nothing jumps. */
 #define WEATHER_CLOCK_WRAP 3600.0f
 
-#define WEATHER_TEMP_CELL 256     /* blocks between the cold map's points */
-#define WEATHER_COLD 80           /* a place is cold below this, of 0 .. 255 */
+#define WEATHER_COLD (BIOME_T_COOL / BIOME_UNIT) /* a place is cold below this, of 0 .. 255 */
 
 #define WEATHER_COLUMNS_MAX ((2 * WEATHER_RADIUS + 1) * (2 * WEATHER_RADIUS + 1))
 #define WEATHER_VERTS_MAX (WEATHER_COLUMNS_MAX * WEATHER_PER_COLUMN * MESH_FACE_VERTS)
 
 /* A test ROM can start a new world (or one saved before row 3-06) in full
  * rain (-DWEATHER_NEW_RAIN=1), and can make every column west of x =
- * WEATHER_TEST_COLD_X cold and every other warm (-DWEATHER_TEST_COLD_X=8;
- * a very low or high value: all warm or all cold). */
+ * WEATHER_TEST_COLD_X cold and every other warm, with no dry place at all
+ * (-DWEATHER_TEST_COLD_X=8; a very low or high value: all warm or all
+ * cold). */
 #ifndef WEATHER_NEW_RAIN
 #define WEATHER_NEW_RAIN 0
 #endif
@@ -82,11 +87,17 @@ typedef struct {
 void weather_init(Weather *w, uint32_t seed);
 /* The weather `dt` more seconds of play on. */
 void weather_step(Weather *w, float dt);
-/* The cold map's warmth at world column (x, z), 0 .. 255, eased between
- * the map's points; a column is cold below WEATHER_COLD. */
+/* The climate's temperature at world column (x, z), 0 .. 255 (biome.h:
+ * the same map the biomes use); a column is cold below WEATHER_COLD. */
 int weather_temp(uint32_t seed, int x, int z);
-/* Is world column (x, z) cold? */
+/* Is world column (x, z) cold: does snow fall at ground level there? */
 bool weather_cold(uint32_t seed, int x, int z);
+/* Does snow fall on column (x, z) when its highest block is at y `top` - 1:
+ * cold, or on a mountain at or above the snow line (biome_snow_line())? */
+bool weather_snows(uint32_t seed, int x, int z, int top);
+/* Is world column (x, z) dry: no rain or snow at all (desert, savanna and
+ * badlands climates)? */
+bool weather_dry(uint32_t seed, int x, int z);
 /* The sky and world as the weather leaves them: nothing changed at
  * strength 0. */
 void weather_sky(SkyLook *look, float strength);

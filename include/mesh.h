@@ -10,7 +10,9 @@ typedef struct {
     float u, v;    /* texture coordinates in the block texture picture */
     float r, g, b; /* brightness, the same in all three: faces are shaded by
                       the way they face, so a block's edges show, and each
-                      corner is darkened by the blocks round it (row 3-01) */
+                      corner is darkened by the blocks round it (row 3-01).
+                      The top of grass is also multiplied by its biome's tint
+                      (row 4-02), so those three differ */
     float t;       /* torch light, 0 (none) to 1 (a torch's own cell), row
                       3-03 (light.h); the shader lights the vertex by the
                       brighter of the daylight and this, tinted warm */
@@ -80,7 +82,8 @@ void mesh_face_lit(MeshVertex out[MESH_FACE_VERTS], float x, float y, float z,
 int mesh_torch(MeshVertex out[MESH_TORCH_VERTS], float x, float y, float z);
 
 /* Write all six faces of a block (MESH_BLOCK_VERTS vertices), or a torch's
- * shape (mesh_torch()) for a torch. Returns the number of vertices written:
+ * shape (mesh_torch()) for a torch. A grass top gets the plains tint
+ * (biome.h), as in a plains chunk. Returns the number of vertices written:
  * 0 for air or a bad block. */
 int mesh_block(MeshVertex *out, float x, float y, float z, int block);
 

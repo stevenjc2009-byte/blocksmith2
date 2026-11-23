@@ -4,11 +4,11 @@
 #include <stdint.h>
 
 /* The block textures, the sun and moon (row 3-02), the clouds' white
- * (row 3-04) and sand and water (row 4-01), drawn in code
- * (kickoff F-4): one 64 x 64 picture holding a 4 x 4 grid of 16 x 16
- * tiles. Tile i sits in column i % 4 and row i / 4, counting rows from the
- * top. */
-#define BLOCKTEX_SIZE 64
+ * (row 3-04), sand and water (row 4-01) and the biome blocks (row 4-02),
+ * drawn in code (kickoff F-4): one 128 x 128 picture (a power of two, for
+ * the GPU) holding an 8 x 8 grid of 16 x 16 tiles. Tile i sits in column
+ * i % 8 and row i / 8, counting rows from the top. */
+#define BLOCKTEX_SIZE 128
 #define BLOCKTEX_TILE 16
 #define BLOCKTEX_PER_ROW (BLOCKTEX_SIZE / BLOCKTEX_TILE)
 
@@ -28,6 +28,18 @@ enum {
     TILE_CLOUD, /* row 3-04: plain white, for the clouds (cloud.h) */
     TILE_SAND,  /* row 4-01: pale sand with darker grains */
     TILE_WATER, /* row 4-01: blue with soft ripples, every texel BLOCKTEX_WATER_ALPHA */
+    TILE_SNOW,               /* row 4-02: white with pale blue shadows */
+    TILE_SNOWY_GRASS_SIDE,   /* dirt under a ragged fringe of snow */
+    TILE_ICE,                /* pale blue with lighter streaks */
+    TILE_SANDSTONE_TOP,      /* smooth pale sand */
+    TILE_SANDSTONE_SIDE,     /* the same in layers */
+    TILE_RED_SAND,
+    TILE_TERRACOTTA,         /* plain orange-brown */
+    TILE_TERRACOTTA_WHITE,
+    TILE_TERRACOTTA_YELLOW,
+    TILE_TERRACOTTA_RED,
+    TILE_TERRACOTTA_BROWN,
+    TILE_GRAVEL,
     TILE_COUNT
 };
 

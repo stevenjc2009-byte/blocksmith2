@@ -38,6 +38,17 @@ static int tile_of(int i)
            (i % BLOCKTEX_SIZE) / BLOCKTEX_TILE;
 }
 
+/* Row 4-02 tiles. */
+static int is_snow(uint32_t c) { return red(c) >= 200 && green(c) >= 215 && blue(c) >= 232 && blue(c) >= red(c); }
+static int is_ice(uint32_t c) { return blue(c) > red(c) && blue(c) >= green(c) && red(c) >= 100 && green(c) >= 150; }
+static int is_red_sand(uint32_t c) { return red(c) > green(c) + 40 && green(c) > blue(c) && red(c) > 150; }
+static int is_sand_stone(uint32_t c) { return red(c) >= green(c) && green(c) > blue(c) && red(c) > 160; }
+static int is_gravel(uint32_t c)
+{
+    return abs(red(c) - green(c)) <= 16 && abs(green(c) - blue(c)) <= 16 && red(c) >= 70 && red(c) <= 200;
+}
+static int is_warm(uint32_t c) { return red(c) > green(c) && green(c) >= blue(c); }
+
 static int is_grey(uint32_t c)
 {
     return abs(red(c) - green(c)) <= 8 && abs(green(c) - blue(c)) <= 8 &&
@@ -122,12 +133,12 @@ static void check_torch(void)
     CHECK_EQ_INT(grey, 256 - 20);
     CHECK_EQ_INT(flame, 6);
     CHECK_EQ_INT(wood, 14);
-    CHECK_EQ_INT(TILE_TORCH, 6); /* column 2, row 1: left at texel 32, top at 16 */
+    CHECK_EQ_INT(TILE_TORCH, 6); /* column 6, row 0 of the 8 by 8 atlas: left at texel 96 */
     blocktex_sub_uv(TILE_TORCH, 7, 6, 9, 16, uv);
-    CHECK_NEAR(uv[0], 0.5f + 7 * t + BLOCKTEX_INSET, TOL);
-    CHECK_NEAR(uv[2], 0.5f + 9 * t - BLOCKTEX_INSET, TOL);
-    CHECK_NEAR(uv[3], 0.75f - 6 * t - BLOCKTEX_INSET, TOL);
-    CHECK_NEAR(uv[1], 0.5f + BLOCKTEX_INSET, TOL);
+    CHECK_NEAR(uv[0], 0.75f + 7 * t + BLOCKTEX_INSET, TOL);
+    CHECK_NEAR(uv[2], 0.75f + 9 * t - BLOCKTEX_INSET, TOL);
+    CHECK_NEAR(uv[3], 1.0f - 6 * t - BLOCKTEX_INSET, TOL);
+    CHECK_NEAR(uv[1], 0.875f + BLOCKTEX_INSET, TOL);
 }
 
 void test_blocktex(void)
@@ -160,28 +171,70 @@ void test_blocktex(void)
         if (t != TILE_CLOUD) /* row 3-04: the clouds are flat white */
             CHECK_EQ_INT(colours_in(t) >= 8, 1);
     check_tile_all(TILE_CLOUD, is_white, "white");
-    blocktex_tile_uv(TILE_CLOUD, uv); /* tile 7: second row, right end */
-    CHECK_NEAR(uv[0], 0.75 + BLOCKTEX_INSET, TOL);
-    CHECK_NEAR(uv[1], 0.5 + BLOCKTEX_INSET, TOL);
+    blocktex_tile_uv(TILE_CLOUD, uv); /* tile 7: first row, right end */
+    CHECK_NEAR(uv[0], 0.875 + BLOCKTEX_INSET, TOL);
+    CHECK_NEAR(uv[1], 0.875 + BLOCKTEX_INSET, TOL);
 
     /* An unused tile is the magenta and black check. */
     CHECK_EQ_INT((int)texel(TILE_COUNT, 0, 0), (int)0xFF00FFFFu);
     CHECK_EQ_INT((int)texel(TILE_COUNT, 8, 0), (int)0x000000FFu);
 
-    /* Tile 0 is the top-left of the picture: u 0..0.25, v 0.75..1. */
+    /* Tile 0 is the top-left of the picture: u 0..0.125, v 0.875..1. */
     blocktex_tile_uv(TILE_GRASS_TOP, uv);
     CHECK_NEAR(uv[0], 0.0 + BLOCKTEX_INSET, TOL);
-    CHECK_NEAR(uv[1], 0.75 + BLOCKTEX_INSET, TOL);
-    CHECK_NEAR(uv[2], 0.25 - BLOCKTEX_INSET, TOL);
+    CHECK_NEAR(uv[1], 0.875 + BLOCKTEX_INSET, TOL);
+    CHECK_NEAR(uv[2], 0.125 - BLOCKTEX_INSET, TOL);
     CHECK_NEAR(uv[3], 1.0 - BLOCKTEX_INSET, TOL);
-    /* Tile 3 is the right end of the top row. */
+    /* Tile 3 is the fourth column of the top row. */
     blocktex_tile_uv(TILE_STONE, uv);
-    CHECK_NEAR(uv[0], 0.75 + BLOCKTEX_INSET, TOL);
-    CHECK_NEAR(uv[2], 1.0 - BLOCKTEX_INSET, TOL);
+    CHECK_NEAR(uv[0], 0.375 + BLOCKTEX_INSET, TOL);
+    CHECK_NEAR(uv[2], 0.5 - BLOCKTEX_INSET, TOL);
+    CHECK_NEAR(uv[1], 0.875 + BLOCKTEX_INSET, TOL);
+    /* Tile 9 is the second row, second column. */
+    blocktex_tile_uv(9, uv);
+    CHECK_NEAR(uv[0], 0.125 + BLOCKTEX_INSET, TOL);
     CHECK_NEAR(uv[1], 0.75 + BLOCKTEX_INSET, TOL);
-    /* Tile 5 is the second row, second column. */
-    blocktex_tile_uv(5, uv);
-    CHECK_NEAR(uv[0], 0.25 + BLOCKTEX_INSET, TOL);
-    CHECK_NEAR(uv[1], 0.5 + BLOCKTEX_INSET, TOL);
-    CHECK_NEAR(uv[3], 0.75 - BLOCKTEX_INSET, TOL);
+    CHECK_NEAR(uv[3], 0.875 - BLOCKTEX_INSET, TOL);
+
+    /* Row 4-02: the picture grew to 128 pixels (8 by 8 tiles) for the new
+     * blocks; each new tile is drawn (not the magenta check) and its own
+     * colour, snow white-blue, ice light blue, terracotta bands warm. */
+    CHECK_EQ_INT(BLOCKTEX_SIZE, 128);
+    CHECK_EQ_INT(BLOCKTEX_PER_ROW, 8);
+    CHECK_EQ_INT(TILE_COUNT, 22);
+    for (t = TILE_SNOW; t < TILE_COUNT; t++) {
+        int x, y, check = 0;
+
+        for (y = 0; y < BLOCKTEX_TILE; y++)
+            for (x = 0; x < BLOCKTEX_TILE; x++)
+                check += texel(t, x, y) == 0xFF00FFFFu;
+        CHECK_EQ_INT(check, 0);
+    }
+    check_tile_all(TILE_SNOW, is_snow, "snow");
+    check_tile_all(TILE_ICE, is_ice, "ice");
+    check_tile_all(TILE_RED_SAND, is_red_sand, "red sand");
+    check_tile_all(TILE_GRAVEL, is_gravel, "gravel grey");
+    check_tile_all(TILE_SANDSTONE_TOP, is_sand_stone, "sandstone");
+    check_tile_all(TILE_SANDSTONE_SIDE, is_sand_stone, "sandstone");
+    check_tile_all(TILE_TERRACOTTA, is_warm, "warm");
+    check_tile_all(TILE_TERRACOTTA_WHITE, is_warm, "warm");
+    check_tile_all(TILE_TERRACOTTA_YELLOW, is_warm, "warm");
+    check_tile_all(TILE_TERRACOTTA_RED, is_warm, "warm");
+    check_tile_all(TILE_TERRACOTTA_BROWN, is_warm, "warm");
+    /* The snowy grass side is white at the top and dirt below. */
+    CHECK_EQ_INT(is_snow(texel(TILE_SNOWY_GRASS_SIDE, 3, 0)), 1);
+    CHECK_EQ_INT(is_brown(texel(TILE_SNOWY_GRASS_SIDE, 3, 15)), 1);
+    /* The grass top is light enough for every biome tint to only darken. */
+    CHECK_EQ_INT(green(texel(TILE_GRASS_TOP, 4, 4)) > 160, 1);
+    /* The grass side is never tinted, so its fringe is the green of a
+     * plains-tinted top (about 150), not the light untinted top. */
+    {
+        int x, side = 0, top = 0;
+
+        for (x = 0; x < BLOCKTEX_TILE; x++) {
+            side += green(texel(TILE_GRASS_SIDE, x, 0));
+            top += green(texel(TILE_GRASS_TOP, x, 0));
+        }
+        CHECK_NEAR((double)side / BLOCKTEX_TILE, (double)top / BLOCKTEX_TILE * 150.0 / 178.0, 4.0);
+    }
 }
