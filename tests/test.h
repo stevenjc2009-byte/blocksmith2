@@ -48,5 +48,6 @@ void test_walk(void);
 void test_player(void);
 void test_raycast(void);
 void test_break(void);
+void test_place(void);
 
 #endif

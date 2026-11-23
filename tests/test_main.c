@@ -20,6 +20,7 @@ int main(void)
     test_player();
     test_raycast();
     test_break();
+    test_place();
 
     printf("PC tests: %d checks, %d failed\n", g_checks, g_fails);
     if (g_checks == 0) {

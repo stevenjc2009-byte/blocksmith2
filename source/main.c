@@ -9,24 +9,27 @@
 #include "look.h"
 #include "mat4.h"
 #include "mesh.h"
+#include "place.h"
 #include "player.h"
 #include "raycast.h"
 #include "walk.h"
 #include "world.h"
 
-/* Roadmap row 1-08: breaking blocks. The player stands in the middle of the
+/* Roadmap row 1-09: placing blocks. The player stands in the middle of the
  * small world (4 x 4 chunks of gentle hills from a fixed seed, one mesh per
  * chunk) facing north. The Circle Pad walks, by where the camera faces;
  * gravity holds the player on the ground, blocks stop them, and walking into
  * a one-block step hops up it (no jump button). The world's sides are an
  * invisible wall. A B X Y and the C-stick look around. A crosshair marks the
  * middle of the top screen; R breaks the block under it, up to 5 blocks
- * away, at once (timed mining comes with tools, kickoff P-4), and the
- * meshes of the chunks it changes are rebuilt. The bottom screen stays a
- * solid colour. START quits. */
+ * away, at once (timed mining comes with tools, kickoff P-4), and L puts a
+ * stone block against the face looked at, never inside the player. The
+ * meshes of the chunks a change touches are rebuilt. The bottom screen
+ * stays a solid colour. START quits. */
 
 #define PI 3.14159265f
 #define WORLD_SEED 2026u /* typed and random seeds come later (kickoff W-10) */
+#define HAND_BLOCK BLOCK_STONE /* until the hotbar (roadmap row 1-10) */
 
 static World s_world;
 static MeshVertex *s_mesh[WORLD_CHUNKS][WORLD_CHUNKS];
@@ -97,25 +100,52 @@ static bool build_meshes(void)
     return true;
 }
 
-/* R: break the block under the crosshair and rebuild the chunks it changes.
- * False only if a rebuild ran out of memory. */
-static bool break_looked_at(const Camera *cam)
+/* Rebuild the meshes a change to block column (x, z) touches. False if out
+ * of memory. */
+static bool rebuild_around(int x, int z)
 {
-    float f[3];
-    RayHit hit;
     int touched[3][2];
     int n, k;
 
-    camera_forward(cam, f);
-    if (!raycast(&s_world, cam->x, cam->y, cam->z, f[0], f[1], f[2], RAY_REACH, &hit))
-        return true;
-    if (!world_break(&s_world, hit.x, hit.y, hit.z))
-        return true;
-    n = world_touched_chunks(hit.x, hit.z, touched);
+    n = world_touched_chunks(x, z, touched);
     for (k = 0; k < n; k++)
         if (!build_mesh(touched[k][0] - WORLD_CHUNK_MIN, touched[k][1] - WORLD_CHUNK_MIN))
             return false;
     return true;
+}
+
+/* The block under the crosshair, if one is in reach. */
+static bool looked_at(const Camera *cam, RayHit *hit)
+{
+    float f[3];
+
+    camera_forward(cam, f);
+    return raycast(&s_world, cam->x, cam->y, cam->z, f[0], f[1], f[2], RAY_REACH, hit);
+}
+
+/* R: break the block under the crosshair and rebuild the chunks it changes.
+ * False only if a rebuild ran out of memory. */
+static bool break_looked_at(const Camera *cam)
+{
+    RayHit hit;
+
+    if (!looked_at(cam, &hit) || !world_break(&s_world, hit.x, hit.y, hit.z))
+        return true;
+    return rebuild_around(hit.x, hit.z);
+}
+
+/* L: put block b against the face under the crosshair (not inside the
+ * player) and rebuild the chunks round the new block, which can be in the
+ * next chunk over from the block looked at. False only if a rebuild ran out
+ * of memory. */
+static bool place_looked_at(const Camera *cam, const Player *player, int b)
+{
+    RayHit hit;
+    int x, y, z;
+
+    if (!looked_at(cam, &hit) || !place_block(&s_world, player, &hit, b, &x, &y, &z))
+        return true;
+    return rebuild_around(x, z);
 }
 
 /* The crosshair, drawn by the CPU straight into the top screen's picture
@@ -208,6 +238,8 @@ int main(void)
         cam.z = player.z;
         if ((hidKeysDown() & KEY_R) && !break_looked_at(&cam))
             break; /* out of memory for a mesh */
+        if ((hidKeysDown() & KEY_L) && !place_looked_at(&cam, &player, HAND_BLOCK))
+            break;
 
         fill_screen(GFX_BOTTOM, 80, 150, 60);  /* grass green */
         gfxFlushBuffers();
