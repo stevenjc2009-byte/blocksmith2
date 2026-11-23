@@ -18,6 +18,8 @@ int main(void)
     test_world();
     test_walk();
     test_player();
+    test_raycast();
+    test_break();
 
     printf("PC tests: %d checks, %d failed\n", g_checks, g_fails);
     if (g_checks == 0) {

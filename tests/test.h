@@ -46,5 +46,7 @@ void test_terrain(void);
 void test_world(void);
 void test_walk(void);
 void test_player(void);
+void test_raycast(void);
+void test_break(void);
 
 #endif

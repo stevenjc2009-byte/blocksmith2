@@ -10,16 +10,20 @@
 #include "mat4.h"
 #include "mesh.h"
 #include "player.h"
+#include "raycast.h"
 #include "walk.h"
 #include "world.h"
 
-/* Roadmap row 1-07: walking. The player stands in the middle of the small
- * world (4 x 4 chunks of gentle hills from a fixed seed, one mesh per chunk)
- * facing north. The Circle Pad walks, by where the camera faces; gravity
- * holds the player on the ground, blocks stop them, and walking into a
- * one-block step hops up it (no jump button). The world's sides are an
- * invisible wall. A B X Y and the C-stick look around. The bottom screen
- * stays a solid colour. START quits. */
+/* Roadmap row 1-08: breaking blocks. The player stands in the middle of the
+ * small world (4 x 4 chunks of gentle hills from a fixed seed, one mesh per
+ * chunk) facing north. The Circle Pad walks, by where the camera faces;
+ * gravity holds the player on the ground, blocks stop them, and walking into
+ * a one-block step hops up it (no jump button). The world's sides are an
+ * invisible wall. A B X Y and the C-stick look around. A crosshair marks the
+ * middle of the top screen; R breaks the block under it, up to 5 blocks
+ * away, at once (timed mining comes with tools, kickoff P-4), and the
+ * meshes of the chunks it changes are rebuilt. The bottom screen stays a
+ * solid colour. START quits. */
 
 #define PI 3.14159265f
 #define WORLD_SEED 2026u /* typed and random seeds come later (kickoff W-10) */
@@ -35,44 +39,101 @@ static void fill_screen(gfxScreen_t screen, u8 r, u8 g, u8 b)
     fb_fill_bgr8(fb, width * height, r, g, b);
 }
 
+static void free_mesh(int i, int j)
+{
+    if (s_mesh[j][i]) {
+        linearFree(s_mesh[j][i]);
+        s_mesh[j][i] = NULL;
+    }
+    s_verts[j][i] = 0;
+}
+
 static void free_meshes(void)
 {
     int i, j;
 
     for (j = 0; j < WORLD_CHUNKS; j++)
         for (i = 0; i < WORLD_CHUNKS; i++)
-            if (s_mesh[j][i]) {
-                linearFree(s_mesh[j][i]);
-                s_mesh[j][i] = NULL;
-            }
+            free_mesh(i, j);
 }
 
-/* One mesh per chunk, in linear memory for the GPU. False if out of memory. */
+/* (Re)build the mesh of chunk [j][i] in linear memory for the GPU. Only
+ * between frames: gpu_frame_end() has waited for the GPU, so the old mesh is
+ * no longer being read. False if out of memory. */
+static bool build_mesh(int i, int j)
+{
+    int cx = WORLD_CHUNK_MIN + i, cz = WORLD_CHUNK_MIN + j;
+    const Chunk *c = world_chunk(&s_world, cx, cz);
+    const Chunk *nb[NB_COUNT];
+    int faces;
+
+    free_mesh(i, j);
+    world_neighbours(&s_world, cx, cz, nb);
+    faces = chunk_mesh_count(c, nb);
+    if (faces == 0)
+        return true;
+    s_mesh[j][i] = linearAlloc(faces * MESH_FACE_VERTS * sizeof(MeshVertex));
+    if (!s_mesh[j][i])
+        return false;
+    s_verts[j][i] = chunk_mesh_build(c, nb, (float)(cx * CHUNK_SIZE), (float)(cz * CHUNK_SIZE),
+                                     s_mesh[j][i], faces * MESH_FACE_VERTS);
+    if (s_verts[j][i] <= 0) {
+        free_mesh(i, j);
+        return false;
+    }
+    GSPGPU_FlushDataCache(s_mesh[j][i], s_verts[j][i] * sizeof(MeshVertex));
+    return true;
+}
+
+/* One mesh per chunk. False if out of memory. */
 static bool build_meshes(void)
 {
     int i, j;
 
     for (j = 0; j < WORLD_CHUNKS; j++)
-        for (i = 0; i < WORLD_CHUNKS; i++) {
-            int cx = WORLD_CHUNK_MIN + i, cz = WORLD_CHUNK_MIN + j;
-            const Chunk *c = world_chunk(&s_world, cx, cz);
-            const Chunk *nb[NB_COUNT];
-            int faces;
-
-            world_neighbours(&s_world, cx, cz, nb);
-            faces = chunk_mesh_count(c, nb);
-            if (faces == 0)
-                continue;
-            s_mesh[j][i] = linearAlloc(faces * MESH_FACE_VERTS * sizeof(MeshVertex));
-            if (!s_mesh[j][i])
+        for (i = 0; i < WORLD_CHUNKS; i++)
+            if (!build_mesh(i, j))
                 return false;
-            s_verts[j][i] = chunk_mesh_build(c, nb, (float)(cx * CHUNK_SIZE), (float)(cz * CHUNK_SIZE),
-                                             s_mesh[j][i], faces * MESH_FACE_VERTS);
-            if (s_verts[j][i] <= 0)
-                return false;
-            GSPGPU_FlushDataCache(s_mesh[j][i], s_verts[j][i] * sizeof(MeshVertex));
-        }
     return true;
+}
+
+/* R: break the block under the crosshair and rebuild the chunks it changes.
+ * False only if a rebuild ran out of memory. */
+static bool break_looked_at(const Camera *cam)
+{
+    float f[3];
+    RayHit hit;
+    int touched[3][2];
+    int n, k;
+
+    camera_forward(cam, f);
+    if (!raycast(&s_world, cam->x, cam->y, cam->z, f[0], f[1], f[2], RAY_REACH, &hit))
+        return true;
+    if (!world_break(&s_world, hit.x, hit.y, hit.z))
+        return true;
+    n = world_touched_chunks(hit.x, hit.z, touched);
+    for (k = 0; k < n; k++)
+        if (!build_mesh(touched[k][0] - WORLD_CHUNK_MIN, touched[k][1] - WORLD_CHUNK_MIN))
+            return false;
+    return true;
+}
+
+/* The crosshair, drawn by the CPU straight into the top screen's picture
+ * after the GPU has copied the frame there. The 3DS keeps that picture
+ * standing on its side: gfxGetFramebuffer() calls the top screen 240 wide
+ * and 400 tall, so they are passed swapped. Its cache lines are thrown away
+ * first (the GPU wrote the memory behind the CPU's back, and an old line
+ * written back would put last frame's pixels over this one), then written
+ * out. */
+static void draw_crosshair(void)
+{
+    u16 fw = 0, fh = 0;
+    u8 *fb = gfxGetFramebuffer(GFX_TOP, GFX_LEFT, &fw, &fh);
+    u32 size = (u32)fw * fh * 3;
+
+    GSPGPU_InvalidateDataCache(fb, size);
+    fb_crosshair_bgr8(fb, fh, fw);
+    GSPGPU_FlushDataCache(fb, size);
 }
 
 /* Walking speed from the Circle Pad, by where the camera faces. */
@@ -145,6 +206,8 @@ int main(void)
         cam.x = player.x;
         cam.y = player.y + PLAYER_EYE;
         cam.z = player.z;
+        if ((hidKeysDown() & KEY_R) && !break_looked_at(&cam))
+            break; /* out of memory for a mesh */
 
         fill_screen(GFX_BOTTOM, 80, 150, 60);  /* grass green */
         gfxFlushBuffers();
@@ -156,6 +219,7 @@ int main(void)
             for (i = 0; i < WORLD_CHUNKS; i++)
                 gpu_draw(s_mesh[j][i], s_verts[j][i], &mvp);
         gpu_frame_end();
+        draw_crosshair();
 
         gfxSwapBuffers();
         gspWaitForVBlank();

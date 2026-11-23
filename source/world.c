@@ -42,6 +42,49 @@ void world_set(World *w, int x, int y, int z, int block)
     chunk_set(&w->chunks[j][i], block_to_local(x), y, block_to_local(z), block);
 }
 
+bool world_break(World *w, int x, int y, int z)
+{
+    if (y <= 0 || world_get(w, x, y, z) == BLOCK_AIR)
+        return false;
+    world_set(w, x, y, z, BLOCK_AIR);
+    return true;
+}
+
+static bool in_world(int cx, int cz)
+{
+    return cx >= WORLD_CHUNK_MIN && cx < WORLD_CHUNK_MIN + WORLD_CHUNKS &&
+           cz >= WORLD_CHUNK_MIN && cz < WORLD_CHUNK_MIN + WORLD_CHUNKS;
+}
+
+static int add_chunk(int out[3][2], int n, int cx, int cz)
+{
+    if (!in_world(cx, cz))
+        return n;
+    out[n][0] = cx;
+    out[n][1] = cz;
+    return n + 1;
+}
+
+int world_touched_chunks(int x, int z, int out[3][2])
+{
+    int cx = block_to_chunk(x), cz = block_to_chunk(z);
+    int lx = block_to_local(x), lz = block_to_local(z);
+    int n;
+
+    if (!in_world(cx, cz))
+        return 0;
+    n = add_chunk(out, 0, cx, cz);
+    if (lx == 0)
+        n = add_chunk(out, n, cx - 1, cz);
+    else if (lx == CHUNK_SIZE - 1)
+        n = add_chunk(out, n, cx + 1, cz);
+    if (lz == 0)
+        n = add_chunk(out, n, cx, cz - 1);
+    else if (lz == CHUNK_SIZE - 1)
+        n = add_chunk(out, n, cx, cz + 1);
+    return n;
+}
+
 void world_neighbours(const World *w, int cx, int cz, const Chunk *nb[NB_COUNT])
 {
     nb[NB_POS_X] = world_chunk(w, cx + 1, cz);
