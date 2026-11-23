@@ -9,16 +9,21 @@
 #include "look.h"
 #include "mat4.h"
 #include "mesh.h"
+#include "world.h"
 
-/* Roadmap row 1-05: one chunk. A 16 x 128 x 16 column: stone up to y 59,
- * three layers of dirt, grass on top (y 63), with a 4 x 4 pit three deep in
- * the middle of the top. Only faces next to air are drawn. The camera hangs
- * south of the chunk looking north and down at it; A B X Y and the C-stick
- * turn it. The bottom screen stays a solid colour. START quits. */
+/* Roadmap row 1-06: a small world. 4 x 4 chunks (64 x 64 blocks) of gentle
+ * hills from a fixed seed: grass, three layers of dirt, stone below. Each
+ * chunk has its own mesh, built with its neighbours so the faces between
+ * chunks are skipped. The camera hangs over the south edge looking north
+ * across the hills; A B X Y and the C-stick turn it. The bottom screen stays
+ * a solid colour. START quits. */
 
 #define PI 3.14159265f
+#define WORLD_SEED 2026u /* typed and random seeds come later (kickoff W-10) */
 
-static Chunk s_chunk;
+static World s_world;
+static MeshVertex *s_mesh[WORLD_CHUNKS][WORLD_CHUNKS];
+static int s_verts[WORLD_CHUNKS][WORLD_CHUNKS];
 
 static void fill_screen(gfxScreen_t screen, u8 r, u8 g, u8 b)
 {
@@ -27,19 +32,44 @@ static void fill_screen(gfxScreen_t screen, u8 r, u8 g, u8 b)
     fb_fill_bgr8(fb, width * height, r, g, b);
 }
 
-static void build_chunk(Chunk *c)
+static void free_meshes(void)
 {
-    int x, y, z;
+    int i, j;
 
-    chunk_clear(c);
-    for (y = 0; y < 64; y++)
-        for (z = 0; z < CHUNK_SIZE; z++)
-            for (x = 0; x < CHUNK_SIZE; x++)
-                chunk_set(c, x, y, z, y < 60 ? BLOCK_STONE : y < 63 ? BLOCK_DIRT : BLOCK_GRASS);
-    for (y = 61; y < 64; y++) /* the pit */
-        for (z = 6; z < 10; z++)
-            for (x = 6; x < 10; x++)
-                chunk_set(c, x, y, z, BLOCK_AIR);
+    for (j = 0; j < WORLD_CHUNKS; j++)
+        for (i = 0; i < WORLD_CHUNKS; i++)
+            if (s_mesh[j][i]) {
+                linearFree(s_mesh[j][i]);
+                s_mesh[j][i] = NULL;
+            }
+}
+
+/* One mesh per chunk, in linear memory for the GPU. False if out of memory. */
+static bool build_meshes(void)
+{
+    int i, j;
+
+    for (j = 0; j < WORLD_CHUNKS; j++)
+        for (i = 0; i < WORLD_CHUNKS; i++) {
+            int cx = WORLD_CHUNK_MIN + i, cz = WORLD_CHUNK_MIN + j;
+            const Chunk *c = world_chunk(&s_world, cx, cz);
+            const Chunk *nb[NB_COUNT];
+            int faces;
+
+            world_neighbours(&s_world, cx, cz, nb);
+            faces = chunk_mesh_count(c, nb);
+            if (faces == 0)
+                continue;
+            s_mesh[j][i] = linearAlloc(faces * MESH_FACE_VERTS * sizeof(MeshVertex));
+            if (!s_mesh[j][i])
+                return false;
+            s_verts[j][i] = chunk_mesh_build(c, nb, (float)(cx * CHUNK_SIZE), (float)(cz * CHUNK_SIZE),
+                                             s_mesh[j][i], faces * MESH_FACE_VERTS);
+            if (s_verts[j][i] <= 0)
+                return false;
+            GSPGPU_FlushDataCache(s_mesh[j][i], s_verts[j][i] * sizeof(MeshVertex));
+        }
+    return true;
 }
 
 static void read_look(LookInput *in)
@@ -58,31 +88,22 @@ static void read_look(LookInput *in)
 
 int main(void)
 {
-    /* 18 blocks south of the chunk's south wall (z = 16), 8 above its top
-     * (y = 64), level with its middle, facing north, looking down 30 degrees. */
-    Camera cam = { 8.0f, 72.0f, 34.0f, 0.0f, -30.0f * PI / 180.0f };
-    MeshVertex *mesh = NULL;
+    /* 26 blocks south of the world's south edge (z = 32), about 30 above the
+     * ground, in line with its middle, facing north, looking down 35 degrees:
+     * the whole world in view. */
+    Camera cam = { 0.0f, 96.0f, 58.0f, 0.0f, -35.0f * PI / 180.0f };
     Mat4 proj;
     u64 last;
-    int faces, verts = -1;
 
     gfxInitDefault();
-    build_chunk(&s_chunk);
-    faces = chunk_mesh_count(&s_chunk, NULL);
-    if (gpu_init()) {
-        mesh = linearAlloc(faces * MESH_FACE_VERTS * sizeof *mesh);
-        if (mesh)
-            verts = chunk_mesh_build(&s_chunk, NULL, 0.0f, 0.0f, mesh, faces * MESH_FACE_VERTS);
-    }
-    if (verts <= 0) {
-        if (mesh)
-            linearFree(mesh);
+    world_generate(&s_world, WORLD_SEED);
+    if (!gpu_init() || !build_meshes()) {
+        free_meshes();
         gpu_exit();
         gfxExit();
         return 1;
     }
-    GSPGPU_FlushDataCache(mesh, verts * sizeof *mesh);
-    mat4_persp_tilt(&proj, 60.0f * PI / 180.0f, 400.0f / 240.0f, 0.1f, 100.0f);
+    mat4_persp_tilt(&proj, 60.0f * PI / 180.0f, 400.0f / 240.0f, 0.1f, 160.0f);
 
     last = osGetTime();
     while (aptMainLoop()) {
@@ -90,6 +111,7 @@ int main(void)
         Mat4 view, mvp;
         float yaw_rate, pitch_rate, dt;
         u64 now;
+        int i, j;
 
         hidScanInput();
         if (hidKeysDown() & KEY_START)
@@ -112,14 +134,16 @@ int main(void)
         camera_view(&view, &cam);
         mat4_mul(&mvp, &proj, &view);
         gpu_frame_begin();
-        gpu_draw(mesh, verts, &mvp);
+        for (j = 0; j < WORLD_CHUNKS; j++)
+            for (i = 0; i < WORLD_CHUNKS; i++)
+                gpu_draw(s_mesh[j][i], s_verts[j][i], &mvp);
         gpu_frame_end();
 
         gfxSwapBuffers();
         gspWaitForVBlank();
     }
 
-    linearFree(mesh);
+    free_meshes();
     gpu_exit();
     gfxExit();
     return 0;

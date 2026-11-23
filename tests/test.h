@@ -42,5 +42,7 @@ void test_mesh(void);
 void test_look(void);
 void test_camera(void);
 void test_chunk(void);
+void test_terrain(void);
+void test_world(void);
 
 #endif
