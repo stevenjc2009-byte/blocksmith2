@@ -49,5 +49,6 @@ void test_player(void);
 void test_raycast(void);
 void test_break(void);
 void test_place(void);
+void test_hotbar(void);
 
 #endif

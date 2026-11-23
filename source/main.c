@@ -1,11 +1,13 @@
 #include <3ds.h>
 
 #include "block.h"
+#include "blocktex.h"
 #include "camera.h"
 #include "chunk.h"
 #include "chunk_mesh.h"
 #include "framebuffer.h"
 #include "gpu.h"
+#include "hotbar.h"
 #include "look.h"
 #include "mat4.h"
 #include "mesh.h"
@@ -15,32 +17,26 @@
 #include "walk.h"
 #include "world.h"
 
-/* Roadmap row 1-09: placing blocks. The player stands in the middle of the
+/* Roadmap row 1-10: the hotbar. The player stands in the middle of the
  * small world (4 x 4 chunks of gentle hills from a fixed seed, one mesh per
  * chunk) facing north. The Circle Pad walks, by where the camera faces;
  * gravity holds the player on the ground, blocks stop them, and walking into
  * a one-block step hops up it (no jump button). The world's sides are an
  * invisible wall. A B X Y and the C-stick look around. A crosshair marks the
  * middle of the top screen; R breaks the block under it, up to 5 blocks
- * away, at once (timed mining comes with tools, kickoff P-4), and L puts a
- * stone block against the face looked at, never inside the player. The
- * meshes of the chunks a change touches are rebuilt. The bottom screen
- * stays a solid colour. START quits. */
+ * away, at once (timed mining comes with tools, kickoff P-4), and L puts the
+ * chosen block against the face looked at, never inside the player. The
+ * meshes of the chunks a change touches are rebuilt. The bottom screen is
+ * grass green with nine block slots along its foot (grass, dirt, stone,
+ * then empty); tapping a slot chooses it. START quits. */
 
 #define PI 3.14159265f
 #define WORLD_SEED 2026u /* typed and random seeds come later (kickoff W-10) */
-#define HAND_BLOCK BLOCK_STONE /* until the hotbar (roadmap row 1-10) */
 
 static World s_world;
 static MeshVertex *s_mesh[WORLD_CHUNKS][WORLD_CHUNKS];
 static int s_verts[WORLD_CHUNKS][WORLD_CHUNKS];
-
-static void fill_screen(gfxScreen_t screen, u8 r, u8 g, u8 b)
-{
-    u16 width = 0, height = 0;
-    u8 *fb = gfxGetFramebuffer(screen, GFX_LEFT, &width, &height);
-    fb_fill_bgr8(fb, width * height, r, g, b);
-}
+static uint32_t s_atlas[BLOCKTEX_SIZE * BLOCKTEX_SIZE]; /* the hotbar's icons */
 
 static void free_mesh(int i, int j)
 {
@@ -166,6 +162,18 @@ static void draw_crosshair(void)
     GSPGPU_FlushDataCache(fb, size);
 }
 
+/* The bottom screen: grass green with the hotbar along its foot. Its
+ * picture stands on its side like the top screen's (gfxGetFramebuffer()
+ * calls it 240 wide and 320 tall), so the sizes are passed swapped. */
+static void draw_bottom(const Hotbar *hb)
+{
+    u16 fw = 0, fh = 0;
+    u8 *fb = gfxGetFramebuffer(GFX_BOTTOM, GFX_LEFT, &fw, &fh);
+
+    fb_fill_bgr8(fb, fw * fh, 80, 150, 60);
+    hotbar_draw_bgr8(fb, fh, fw, hb, s_atlas);
+}
+
 /* Walking speed from the Circle Pad, by where the camera faces. */
 static void read_walk(const Camera *cam, float *vx, float *vz)
 {
@@ -194,12 +202,15 @@ int main(void)
     /* Facing north, looking a little down; the eye follows the player. */
     Camera cam = { 0.0f, 0.0f, 0.0f, 0.0f, -10.0f * PI / 180.0f };
     Player player;
+    Hotbar hotbar;
     Mat4 proj;
     u64 last;
 
     gfxInitDefault();
     world_generate(&s_world, WORLD_SEED);
     player_spawn(&player, &s_world, 0, 0);
+    blocktex_build(s_atlas);
+    hotbar_init(&hotbar);
     if (!gpu_init() || !build_meshes()) {
         free_meshes();
         gpu_exit();
@@ -238,10 +249,16 @@ int main(void)
         cam.z = player.z;
         if ((hidKeysDown() & KEY_R) && !break_looked_at(&cam))
             break; /* out of memory for a mesh */
-        if ((hidKeysDown() & KEY_L) && !place_looked_at(&cam, &player, HAND_BLOCK))
+        if (hidKeysDown() & KEY_TOUCH) {
+            touchPosition touch;
+
+            hidTouchRead(&touch);
+            hotbar_tap(&hotbar, touch.px, touch.py);
+        }
+        if ((hidKeysDown() & KEY_L) && !place_looked_at(&cam, &player, hotbar_block(&hotbar)))
             break;
 
-        fill_screen(GFX_BOTTOM, 80, 150, 60);  /* grass green */
+        draw_bottom(&hotbar);
         gfxFlushBuffers();
 
         camera_view(&view, &cam);

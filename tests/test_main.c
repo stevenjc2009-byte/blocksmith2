@@ -21,6 +21,7 @@ int main(void)
     test_raycast();
     test_break();
     test_place();
+    test_hotbar();
 
     printf("PC tests: %d checks, %d failed\n", g_checks, g_fails);
     if (g_checks == 0) {
