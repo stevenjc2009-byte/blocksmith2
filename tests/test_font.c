@@ -4,8 +4,8 @@
 #include "framebuffer.h"
 #include "test.h"
 
-/* Row 1-11: the small font the frame counter is written in. The letters
- * are written out again here as pictures, apart from the font's own bit
+/* Rows 1-11 and 2-02: the small font the frame counter and the settings
+ * screen are written in. The letters are written out again here as pictures, apart from the font's own bit
  * table, so a wrong bit in either one shows. */
 
 #define SW 64
@@ -27,9 +27,32 @@ static const struct {
     { '8', { ".XXX.", "X...X", "X...X", ".XXX.", "X...X", "X...X", ".XXX." } },
     { '9', { ".XXX.", "X...X", "X...X", ".XXXX", "....X", "...X.", ".XX.." } },
     { '-', { ".....", ".....", ".....", ".XXX.", ".....", ".....", "....." } },
+    { 'A', { ".XXX.", "X...X", "X...X", "XXXXX", "X...X", "X...X", "X...X" } },
+    { 'B', { "XXXX.", "X...X", "X...X", "XXXX.", "X...X", "X...X", "XXXX." } },
+    { 'C', { ".XXX.", "X...X", "X....", "X....", "X....", "X...X", ".XXX." } },
+    { 'D', { "XXX..", "X..X.", "X...X", "X...X", "X...X", "X..X.", "XXX.." } },
+    { 'E', { "XXXXX", "X....", "X....", "XXXX.", "X....", "X....", "XXXXX" } },
     { 'F', { "XXXXX", "X....", "X....", "XXXX.", "X....", "X....", "X...." } },
+    { 'G', { ".XXX.", "X...X", "X....", "X.XXX", "X...X", "X...X", ".XXXX" } },
+    { 'H', { "X...X", "X...X", "X...X", "XXXXX", "X...X", "X...X", "X...X" } },
+    { 'I', { ".XXX.", "..X..", "..X..", "..X..", "..X..", "..X..", ".XXX." } },
+    { 'J', { "..XXX", "...X.", "...X.", "...X.", "...X.", "X..X.", ".XX.." } },
+    { 'K', { "X...X", "X..X.", "X.X..", "XX...", "X.X..", "X..X.", "X...X" } },
+    { 'L', { "X....", "X....", "X....", "X....", "X....", "X....", "XXXXX" } },
+    { 'M', { "X...X", "XX.XX", "X.X.X", "X.X.X", "X...X", "X...X", "X...X" } },
+    { 'N', { "X...X", "X...X", "XX..X", "X.X.X", "X..XX", "X...X", "X...X" } },
+    { 'O', { ".XXX.", "X...X", "X...X", "X...X", "X...X", "X...X", ".XXX." } },
     { 'P', { "XXXX.", "X...X", "X...X", "XXXX.", "X....", "X....", "X...." } },
+    { 'Q', { ".XXX.", "X...X", "X...X", "X...X", "X.X.X", "X..X.", ".XX.X" } },
+    { 'R', { "XXXX.", "X...X", "X...X", "XXXX.", "X.X..", "X..X.", "X...X" } },
     { 'S', { ".XXXX", "X....", "X....", ".XXX.", "....X", "....X", "XXXX." } },
+    { 'T', { "XXXXX", "..X..", "..X..", "..X..", "..X..", "..X..", "..X.." } },
+    { 'U', { "X...X", "X...X", "X...X", "X...X", "X...X", "X...X", ".XXX." } },
+    { 'V', { "X...X", "X...X", "X...X", "X...X", "X...X", ".X.X.", "..X.." } },
+    { 'W', { "X...X", "X...X", "X...X", "X.X.X", "X.X.X", "X.X.X", ".X.X." } },
+    { 'X', { "X...X", "X...X", ".X.X.", "..X..", ".X.X.", "X...X", "X...X" } },
+    { 'Y', { "X...X", "X...X", ".X.X.", "..X..", "..X..", "..X..", "..X.." } },
+    { 'Z', { "XXXXX", "....X", "...X.", "..X..", ".X...", "X....", "XXXXX" } },
 };
 
 static unsigned char s_buf[SW * SH * 3 + GUARD];
@@ -103,8 +126,12 @@ void test_font(void)
     CHECK_EQ_INT(lit > 40, 1);
     CHECK_EQ_INT(draw_and_compare("-- 9", 2, 20, 2, &lit), 0);
     CHECK_EQ_INT(lit > 20, 1);
-    /* A letter the font lacks draws nothing but keeps its space. */
-    CHECK_EQ_INT(draw_and_compare("Q1", 4, 4, 2, &lit), 0);
+    CHECK_EQ_INT(draw_and_compare("VIEW 5", 0, 4, 1, &lit), 0);
+    CHECK_EQ_INT(lit > 40, 1);
+    CHECK_EQ_INT(draw_and_compare("JQXZ", 3, 12, 2, &lit), 0);
+    CHECK_EQ_INT(lit > 60, 1);
+    /* A character the font lacks draws nothing but keeps its space. */
+    CHECK_EQ_INT(draw_and_compare("?1", 4, 4, 2, &lit), 0);
     n = lit;
     CHECK_EQ_INT(draw_and_compare(" 1", 4, 4, 2, &lit), 0);
     CHECK_EQ_INT(lit, n);

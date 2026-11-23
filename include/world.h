@@ -10,7 +10,7 @@
 /* The endless world (roadmap row 2-01, kickoff answer W-1). Pure C, so the
  * PC tests can run it.
  *
- * It holds up to WORLD_SLOTS x WORLD_SLOTS chunks at once (9 x 9, 2.6 MB).
+ * It holds up to WORLD_SLOTS x WORLD_SLOTS chunks at once (13 x 13, 5.5 MB).
  * Each chunk lives in the slot its position picks: slot
  * [world_slot(cz)][world_slot(cx)], the chunk position's remainder after
  * dividing by WORLD_SLOTS, rounded down for negative chunks. Any WORLD_SLOTS
@@ -20,7 +20,7 @@
  *
  * A chunk that is not loaded reads as air and ignores writes. */
 
-#define WORLD_SLOTS 9
+#define WORLD_SLOTS 13
 
 typedef struct {
     Chunk chunk;

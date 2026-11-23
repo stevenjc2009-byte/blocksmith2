@@ -26,6 +26,7 @@ int main(void)
     test_hotbar();
     test_font();
     test_fps();
+    test_settings();
 
     printf("PC tests: %d checks, %d failed\n", g_checks, g_fails);
     if (g_checks == 0) {

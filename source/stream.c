@@ -2,6 +2,11 @@
 
 #include <stdlib.h>
 
+int stream_view(int view)
+{
+    return view < STREAM_VIEW_MIN ? STREAM_VIEW_MIN : view > STREAM_VIEW_MAX ? STREAM_VIEW_MAX : view;
+}
+
 int stream_ring(int cx, int cz, int pcx, int pcz)
 {
     int dx = abs(cx - pcx), dz = abs(cz - pcz);
@@ -9,24 +14,24 @@ int stream_ring(int cx, int cz, int pcx, int pcz)
     return dx > dz ? dx : dz;
 }
 
-void stream_put_away(World *w, int pcx, int pcz)
+void stream_put_away(World *w, int pcx, int pcz, int view)
 {
-    int i, j;
+    int i, j, keep = stream_view(view) + 1;
 
     for (j = 0; j < WORLD_SLOTS; j++)
         for (i = 0; i < WORLD_SLOTS; i++) {
             const WorldSlot *s = &w->slots[j][i];
 
-            if (s->loaded && stream_ring(s->cx, s->cz, pcx, pcz) > STREAM_KEEP)
+            if (s->loaded && stream_ring(s->cx, s->cz, pcx, pcz) > keep)
                 world_unload(w, s->cx, s->cz);
         }
 }
 
-bool stream_keep_mesh(const World *w, int i, int j, int pcx, int pcz)
+bool stream_keep_mesh(const World *w, int i, int j, int pcx, int pcz, int view)
 {
     const WorldSlot *s = &w->slots[j][i];
 
-    return s->loaded && stream_ring(s->cx, s->cz, pcx, pcz) <= STREAM_VIEW;
+    return s->loaded && stream_ring(s->cx, s->cz, pcx, pcz) <= stream_view(view);
 }
 
 static bool loaded(const World *w, int cx, int cz)
@@ -67,11 +72,11 @@ static bool find(const World *w, const bool meshed[WORLD_SLOTS][WORLD_SLOTS], in
 }
 
 bool stream_next(const World *w, const bool meshed[WORLD_SLOTS][WORLD_SLOTS], int pcx, int pcz,
-                 StreamJob *job)
+                 int view, StreamJob *job)
 {
-    int d;
+    int d, keep = stream_view(view) + 1;
 
-    for (d = 0; d <= STREAM_KEEP; d++) {
+    for (d = 0; d <= keep; d++) {
         if (find(w, meshed, pcx, pcz, d, true, &job->cx, &job->cz)) {
             job->kind = STREAM_LOAD;
             return true;

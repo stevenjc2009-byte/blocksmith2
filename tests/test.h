@@ -69,5 +69,6 @@ void test_place(void);
 void test_hotbar(void);
 void test_font(void);
 void test_fps(void);
+void test_settings(void);
 
 #endif

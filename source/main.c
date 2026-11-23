@@ -16,16 +16,23 @@
 #include "place.h"
 #include "player.h"
 #include "raycast.h"
+#include "settings.h"
 #include "stream.h"
 #include "walk.h"
 #include "world.h"
 
-/* Roadmap row 2-01: the endless world. The player starts in chunk (0, 0) of
- * gentle hills from a fixed seed, facing north. The ground is made as the
- * player walks (stream.h): the 7 x 7 chunks round the player's chunk are
- * drawn, one mesh each, and one more ring round them is kept; one chunk or
- * mesh is made each frame, nearest first, and chunks further away are put
- * away (changes to them are lost until saving, roadmap row 2-04). The Circle
+/* Roadmap row 2-02: the endless world with a settings screen. The player
+ * starts in chunk (0, 0) of gentle hills from a fixed seed, facing north.
+ * The ground is made as the player walks (stream.h): the chunks out to the
+ * view distance round the player's chunk are drawn (3 at start: 7 x 7), one
+ * mesh each, and one more ring round them is kept; one chunk or mesh is made
+ * each frame, nearest first, and chunks further away are put away (changes
+ * to them are lost until saving, roadmap row 2-04). SELECT opens and closes
+ * the settings screen on the bottom screen (settings.h): a slider for the
+ * view distance, 2 to 5, moved by touch or the D-pad left and right; while
+ * it is open the player stands still and R, L and the hotbar do nothing, but
+ * the world goes on being made and drawn, so a new view distance shows at
+ * once. The Circle
  * Pad walks, by where the camera faces; gravity holds the player on the
  * ground, blocks stop them, and walking into a one-block step hops up it (no
  * jump button). A B X Y and the C-stick look around. A crosshair marks the
@@ -50,6 +57,7 @@ static MeshVertex *s_mesh[WORLD_SLOTS][WORLD_SLOTS];
 static int s_verts[WORLD_SLOTS][WORLD_SLOTS];
 static bool s_meshed[WORLD_SLOTS][WORLD_SLOTS];
 static uint32_t s_atlas[BLOCKTEX_SIZE * BLOCKTEX_SIZE]; /* the hotbar's icons */
+static Settings s_settings;
 
 static void free_mesh(int i, int j)
 {
@@ -103,22 +111,22 @@ static bool build_mesh(int cx, int cz)
 
 #define STREAM_ALL (-1)
 
-/* Keep the world round the player's chunk (pcx, pcz) (stream.h): put away
- * the far chunks and the meshes that should go, then run up to jobs jobs
- * (STREAM_ALL: until none are left). Between frames only, like
- * build_mesh(). False if out of memory for a mesh. */
-static bool stream_frame(int pcx, int pcz, int jobs)
+/* Keep the world round the player's chunk (pcx, pcz) out to view distance
+ * view (stream.h): put away the far chunks and the meshes that should go,
+ * then run up to jobs jobs (STREAM_ALL: until none are left). Between frames
+ * only, like build_mesh(). False if out of memory for a mesh. */
+static bool stream_frame(int pcx, int pcz, int view, int jobs)
 {
     StreamJob job;
     int i, j;
 
-    stream_put_away(&s_world, pcx, pcz);
+    stream_put_away(&s_world, pcx, pcz, view);
     for (j = 0; j < WORLD_SLOTS; j++)
         for (i = 0; i < WORLD_SLOTS; i++)
-            if (s_meshed[j][i] && !stream_keep_mesh(&s_world, i, j, pcx, pcz))
+            if (s_meshed[j][i] && !stream_keep_mesh(&s_world, i, j, pcx, pcz, view))
                 free_mesh(i, j);
     while ((jobs == STREAM_ALL || jobs-- > 0) &&
-           stream_next(&s_world, s_meshed, pcx, pcz, &job)) {
+           stream_next(&s_world, s_meshed, pcx, pcz, view, &job)) {
         if (job.kind == STREAM_LOAD) {
             free_mesh(world_slot(job.cx), world_slot(job.cz));
             world_load(&s_world, job.cx, job.cz);
@@ -197,17 +205,22 @@ static void draw_crosshair(void)
     GSPGPU_FlushDataCache(fb, size);
 }
 
-/* The bottom screen: grass green with the hotbar along its foot and the
- * frame counter in the top-left corner. Its picture stands on its side like
- * the top screen's (gfxGetFramebuffer() calls it 240 wide and 320 tall), so
- * the sizes are passed swapped. */
+/* The bottom screen: the settings screen while it is open, else grass green
+ * with the hotbar along its foot; the frame counter in the top-left corner
+ * either way. Its picture stands on its side like the top screen's
+ * (gfxGetFramebuffer() calls it 240 wide and 320 tall), so the sizes are
+ * passed swapped. */
 static void draw_bottom(const Hotbar *hb, int fps_shown)
 {
     u16 fw = 0, fh = 0;
     u8 *fb = gfxGetFramebuffer(GFX_BOTTOM, GFX_LEFT, &fw, &fh);
 
-    fb_fill_bgr8(fb, fw * fh, 80, 150, 60);
-    hotbar_draw_bgr8(fb, fh, fw, hb, s_atlas);
+    if (s_settings.open) {
+        settings_draw_bgr8(fb, fh, fw, &s_settings);
+    } else {
+        fb_fill_bgr8(fb, fw * fh, 80, 150, 60);
+        hotbar_draw_bgr8(fb, fh, fw, hb, s_atlas);
+    }
     fps_draw_bgr8(fb, fh, fw, fps_shown);
 }
 
@@ -248,7 +261,8 @@ int main(void)
     world_init(&s_world, WORLD_SEED);
     blocktex_build(s_atlas);
     hotbar_init(&hotbar);
-    if (!gpu_init() || !stream_frame(0, 0, STREAM_ALL)) {
+    settings_init(&s_settings);
+    if (!gpu_init() || !stream_frame(0, 0, s_settings.view, STREAM_ALL)) {
         free_meshes();
         gpu_exit();
         gfxExit();
@@ -270,6 +284,8 @@ int main(void)
         hidScanInput();
         if (hidKeysDown() & KEY_START)
             break;
+        if (hidKeysDown() & KEY_SELECT)
+            s_settings.open = !s_settings.open;
 
         /* Turn and walk by time passed, so the speed is the same at any
          * frame rate. A long pause (the Home Menu) counts as at most a tenth
@@ -279,28 +295,46 @@ int main(void)
         last = now;
         if (dt > 0.1f)
             dt = 0.1f;
-        read_look(&in);
-        look_rates(&in, &yaw_rate, &pitch_rate);
-        camera_turn(&cam, yaw_rate * dt, pitch_rate * dt);
-        read_walk(&cam, &vx, &vz);
-        player_step(&player, &s_world, vx, vz, dt);
+        if (s_settings.open) {
+            /* The settings screen: the player stands still; a touch or the
+             * D-pad moves the slider. */
+            if (hidKeysHeld() & KEY_TOUCH) {
+                touchPosition touch;
+
+                hidTouchRead(&touch);
+                settings_touch(&s_settings, touch.px, touch.py);
+            }
+            if (hidKeysDown() & KEY_DLEFT)
+                settings_step(&s_settings, -1);
+            if (hidKeysDown() & KEY_DRIGHT)
+                settings_step(&s_settings, 1);
+        } else {
+            read_look(&in);
+            look_rates(&in, &yaw_rate, &pitch_rate);
+            camera_turn(&cam, yaw_rate * dt, pitch_rate * dt);
+            read_walk(&cam, &vx, &vz);
+            player_step(&player, &s_world, vx, vz, dt);
+        }
         cam.x = player.x;
         cam.y = player.y + PLAYER_EYE;
         cam.z = player.z;
         /* One new chunk or mesh a frame round where the player now is. */
         if (!stream_frame(block_to_chunk((int)floorf(player.x)),
-                          block_to_chunk((int)floorf(player.z)), 1))
+                          block_to_chunk((int)floorf(player.z)), s_settings.view, 1))
             break; /* out of memory for a mesh */
-        if ((hidKeysDown() & KEY_R) && !break_looked_at(&cam))
-            break; /* out of memory for a mesh */
-        if (hidKeysDown() & KEY_TOUCH) {
-            touchPosition touch;
+        if (!s_settings.open) {
+            if ((hidKeysDown() & KEY_R) && !break_looked_at(&cam))
+                break; /* out of memory for a mesh */
+            if (hidKeysDown() & KEY_TOUCH) {
+                touchPosition touch;
 
-            hidTouchRead(&touch);
-            hotbar_tap(&hotbar, touch.px, touch.py);
+                hidTouchRead(&touch);
+                hotbar_tap(&hotbar, touch.px, touch.py);
+            }
+            if ((hidKeysDown() & KEY_L) &&
+                !place_looked_at(&cam, &player, hotbar_block(&hotbar)))
+                break;
         }
-        if ((hidKeysDown() & KEY_L) && !place_looked_at(&cam, &player, hotbar_block(&hotbar)))
-            break;
 
         draw_bottom(&hotbar, fps.shown);
         gfxFlushBuffers();

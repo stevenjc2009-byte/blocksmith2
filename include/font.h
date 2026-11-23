@@ -1,9 +1,10 @@
 #ifndef FONT_H_INCLUDED
 #define FONT_H_INCLUDED
 
-/* A small 5 x 7 pixel font for on-screen numbers (roadmap row 1-11's frame
- * counter): the digits, '-', ' ' and the letters F, P and S. Pure C, no 3DS
- * calls, so the PC tests can run it. */
+/* A small 5 x 7 pixel font for on-screen words and numbers (roadmap row
+ * 1-11's frame counter, row 2-02's settings screen): the digits, '-', ' '
+ * and the capital letters A to Z. Pure C, no 3DS calls, so the PC tests can
+ * run it. */
 
 #define FONT_W 5
 #define FONT_H 7

@@ -45,17 +45,18 @@ Chunk *test_slot_chunk(World *w, int cx, int cz)
 
 static void test_slots(void)
 {
+    CHECK_EQ_INT(WORLD_SLOTS, 13);
     CHECK_EQ_INT(world_slot(0), 0);
-    CHECK_EQ_INT(world_slot(8), 8);
-    CHECK_EQ_INT(world_slot(9), 0);
-    CHECK_EQ_INT(world_slot(10), 1);
-    CHECK_EQ_INT(world_slot(-1), 8);
-    CHECK_EQ_INT(world_slot(-9), 0);
-    CHECK_EQ_INT(world_slot(-10), 8);
-    CHECK_EQ_INT(world_slot(62501), 62501 % 9);
-    CHECK_EQ_INT(world_slot(-62501), 9 - 62501 % 9);
-    CHECK_EQ_INT(world_slot(-2147483647 - 1), 7);
-    CHECK_EQ_INT(world_slot(2147483647), 1);
+    CHECK_EQ_INT(world_slot(12), 12);
+    CHECK_EQ_INT(world_slot(13), 0);
+    CHECK_EQ_INT(world_slot(14), 1);
+    CHECK_EQ_INT(world_slot(-1), 12);
+    CHECK_EQ_INT(world_slot(-13), 0);
+    CHECK_EQ_INT(world_slot(-14), 12);
+    CHECK_EQ_INT(world_slot(62501), 10);  /* 62501 = 4807 x 13 + 10 */
+    CHECK_EQ_INT(world_slot(-62501), 3);  /* -62501 = -4808 x 13 + 3 */
+    CHECK_EQ_INT(world_slot(-2147483647 - 1), 2);
+    CHECK_EQ_INT(world_slot(2147483647), 10);
 }
 
 /* Loading, putting away, a chunk taking another's slot, and what reads and
@@ -82,29 +83,29 @@ static void test_load(void)
     CHECK_EQ_INT(world_chunk(&s_w, 5, -3) == C(5, -3), 1);
     CHECK_EQ_INT(memcmp(world_chunk(&s_w, 5, -3), &c, sizeof c), 0);
     CHECK_EQ_INT(world_get(&s_w, 5 * CHUNK_SIZE, 0, -3 * CHUNK_SIZE), BLOCK_STONE);
-    /* Chunk (14, -3) shares the slot: loading it puts (5, -3) away. */
-    world_load(&s_w, 14, -3);
-    terrain_fill_chunk(&c, 77u, 14, -3);
+    /* Chunk (18, -3) shares the slot: loading it puts (5, -3) away. */
+    world_load(&s_w, 18, -3);
+    terrain_fill_chunk(&c, 77u, 18, -3);
     CHECK_EQ_INT(world_chunk(&s_w, 5, -3) == NULL, 1);
-    CHECK_EQ_INT(world_chunk(&s_w, 14, -3) == C(5, -3), 1);
-    CHECK_EQ_INT(memcmp(world_chunk(&s_w, 14, -3), &c, sizeof c), 0);
+    CHECK_EQ_INT(world_chunk(&s_w, 18, -3) == C(5, -3), 1);
+    CHECK_EQ_INT(memcmp(world_chunk(&s_w, 18, -3), &c, sizeof c), 0);
     CHECK_EQ_INT(world_get(&s_w, 5 * CHUNK_SIZE, 0, -3 * CHUNK_SIZE), BLOCK_AIR);
     /* Putting away a chunk that is not there leaves the slot alone. */
     world_unload(&s_w, 5, -3);
-    world_unload(&s_w, 14, 6);
-    CHECK_EQ_INT(world_chunk(&s_w, 14, -3) != NULL, 1);
-    world_unload(&s_w, 14, -3);
-    CHECK_EQ_INT(world_chunk(&s_w, 14, -3) == NULL, 1);
-    CHECK_EQ_INT(world_get(&s_w, 14 * CHUNK_SIZE, 0, -3 * CHUNK_SIZE), BLOCK_AIR);
-    world_set(&s_w, 14 * CHUNK_SIZE, 100, -3 * CHUNK_SIZE, BLOCK_STONE);
-    world_load(&s_w, 14, -3); /* the write above went nowhere */
-    CHECK_EQ_INT(memcmp(world_chunk(&s_w, 14, -3), &c, sizeof c), 0);
+    world_unload(&s_w, 18, 6);
+    CHECK_EQ_INT(world_chunk(&s_w, 18, -3) != NULL, 1);
+    world_unload(&s_w, 18, -3);
+    CHECK_EQ_INT(world_chunk(&s_w, 18, -3) == NULL, 1);
+    CHECK_EQ_INT(world_get(&s_w, 18 * CHUNK_SIZE, 0, -3 * CHUNK_SIZE), BLOCK_AIR);
+    world_set(&s_w, 18 * CHUNK_SIZE, 100, -3 * CHUNK_SIZE, BLOCK_STONE);
+    world_load(&s_w, 18, -3); /* the write above went nowhere */
+    CHECK_EQ_INT(memcmp(world_chunk(&s_w, 18, -3), &c, sizeof c), 0);
 
     /* A neighbour's slot holding some other chunk is not a neighbour. */
     world_load(&s_w, 0, 0);
-    world_load(&s_w, 10, 0); /* slot of chunk (1, 0) */
+    world_load(&s_w, 14, 0); /* slot of chunk (1, 0) */
     world_load(&s_w, -1, 0);
-    world_load(&s_w, 0, 10); /* slot of chunk (0, 1) */
+    world_load(&s_w, 0, 14); /* slot of chunk (0, 1) */
     CHECK_EQ_INT(world_chunk(&s_w, 0, 0) == C(0, 0), 1);
     world_neighbours(&s_w, 0, 0, nb);
     CHECK_EQ_INT(nb[NB_POS_X] == NULL, 1);
@@ -112,9 +113,9 @@ static void test_load(void)
     CHECK_EQ_INT(nb[NB_POS_Z] == NULL, 1);
     CHECK_EQ_INT(nb[NB_NEG_Z] == NULL, 1);
     CHECK_EQ_INT(world_get(&s_w, CHUNK_SIZE, 0, 0), BLOCK_AIR);
-    CHECK_EQ_INT(world_get(&s_w, 10 * CHUNK_SIZE, 0, 0), BLOCK_STONE);
+    CHECK_EQ_INT(world_get(&s_w, 14 * CHUNK_SIZE, 0, 0), BLOCK_STONE);
     CHECK_EQ_INT(world_get(&s_w, 0, 0, CHUNK_SIZE), BLOCK_AIR);
-    CHECK_EQ_INT(world_get(&s_w, 0, 0, 10 * CHUNK_SIZE), BLOCK_STONE);
+    CHECK_EQ_INT(world_get(&s_w, 0, 0, 14 * CHUNK_SIZE), BLOCK_STONE);
 }
 
 static void test_generate(uint32_t seed)
