@@ -58,6 +58,7 @@ void test_mesh(void);
 void test_look(void);
 void test_camera(void);
 void test_chunk(void);
+void test_chunk_ref(void);
 void test_terrain(void);
 void test_world(void);
 void test_stream(void);
@@ -72,5 +73,9 @@ void test_fps(void);
 void test_settings(void);
 void test_seed(void);
 void test_newworld(void);
+void test_save(void);
+void test_save_files(void);
+void test_save_world(void);
+void test_saveui(void);
 
 #endif

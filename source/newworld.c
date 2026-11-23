@@ -14,8 +14,10 @@ static int on_button(int x, int y, int top)
            y < top + NEWWORLD_BUTTON_H;
 }
 
-NewWorldButton newworld_button_at(int x, int y)
+NewWorldButton newworld_button_at(int x, int y, bool saved)
 {
+    if (saved && on_button(x, y, NEWWORLD_CONTINUE_Y))
+        return NEWWORLD_CONTINUE;
     if (on_button(x, y, NEWWORLD_RANDOM_Y))
         return NEWWORLD_RANDOM;
     if (on_button(x, y, NEWWORLD_TYPE_Y))
@@ -51,12 +53,16 @@ static void button(unsigned char *buf, int w, int h, int top, const char *text,
             top + (NEWWORLD_BUTTON_H - FONT_H * TEXT_SCALE) / 2, text, TEXT_SCALE, 255, 255, 255);
 }
 
-void newworld_draw_bgr8(unsigned char *buf, int w, int h, uint32_t seed)
+void newworld_draw_bgr8(unsigned char *buf, int w, int h, uint32_t seed, bool saved)
 {
     char text[SEED_TEXT_SIZE];
 
     fb_fill_bgr8(buf, w * h, NEWWORLD_BG_R, NEWWORLD_BG_G, NEWWORLD_BG_B);
-    centred(buf, w, h, w / 2, NEWWORLD_TITLE_Y, "NEW WORLD", TITLE_SCALE, 255, 255, 255);
+    if (saved)
+        button(buf, w, h, NEWWORLD_CONTINUE_Y, "B  CONTINUE", NEWWORLD_PLAY_R, NEWWORLD_PLAY_G,
+               NEWWORLD_PLAY_B);
+    else
+        centred(buf, w, h, w / 2, NEWWORLD_TITLE_Y, "NEW WORLD", TITLE_SCALE, 255, 255, 255);
     centred(buf, w, h, w / 2, NEWWORLD_LABEL_Y, "SEED", TEXT_SCALE, LABEL_GREY, LABEL_GREY,
             LABEL_GREY);
     seed_to_text(seed, text);
@@ -66,6 +72,6 @@ void newworld_draw_bgr8(unsigned char *buf, int w, int h, uint32_t seed)
            NEWWORLD_BUTTON_B);
     button(buf, w, h, NEWWORLD_TYPE_Y, "Y  TYPE A SEED", NEWWORLD_BUTTON_R, NEWWORLD_BUTTON_G,
            NEWWORLD_BUTTON_B);
-    button(buf, w, h, NEWWORLD_PLAY_Y, "A  PLAY", NEWWORLD_PLAY_R, NEWWORLD_PLAY_G,
-           NEWWORLD_PLAY_B);
+    button(buf, w, h, NEWWORLD_PLAY_Y, saved ? "A  NEW WORLD" : "A  PLAY", NEWWORLD_PLAY_R,
+           NEWWORLD_PLAY_G, NEWWORLD_PLAY_B);
 }

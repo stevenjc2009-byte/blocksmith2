@@ -5,160 +5,73 @@
 #include "blocktex.h"
 #include "camera.h"
 #include "chunk.h"
-#include "chunk_mesh.h"
 #include "fps.h"
+#include "frame.h"
 #include "framebuffer.h"
 #include "gpu.h"
 #include "hotbar.h"
 #include "look.h"
 #include "mat4.h"
-#include "mesh.h"
-#include "newworld.h"
+#include "meshes.h"
 #include "place.h"
 #include "player.h"
 #include "raycast.h"
-#include "seed.h"
+#include "save.h"
+#include "saveui.h"
 #include "settings.h"
-#include "stream.h"
+#include "start.h"
 #include "walk.h"
 #include "world.h"
 
-/* Roadmap row 2-03: the endless world, a settings screen, and a seed for
- * each new world. The game starts on the new-world screen (newworld.h): the
- * bottom screen shows the world's seed, random at first, over the sky blue
- * top screen. X (or its button) rolls a new random seed, Y (or its button)
- * opens the 3DS keyboard to type one (a whole number is that seed, words
- * become one, seed.h), and A (or PLAY) makes the world from that seed. The
- * player starts in chunk (0, 0) of the seed's gentle hills, facing north.
- * The ground is made as the player walks (stream.h): the chunks out to the
- * view distance round the player's chunk are drawn (3 at start: 7 x 7), one
- * mesh each, and one more ring round them is kept; one chunk or mesh is made
- * each frame, nearest first, and chunks further away are put away (changes
- * to them are lost until saving, roadmap row 2-04). SELECT opens and closes
- * the settings screen on the bottom screen (settings.h): a slider for the
- * view distance, 2 to 5, moved by touch or the D-pad left and right; while
- * it is open the player stands still and R, L and the hotbar do nothing, but
- * the world goes on being made and drawn, so a new view distance shows at
- * once. The Circle
- * Pad walks, by where the camera faces; gravity holds the player on the
- * ground, blocks stop them, and walking into a one-block step hops up it (no
- * jump button). A B X Y look around, and so does the C-stick on a New 3DS
- * (an Old 3DS has none). A crosshair marks the
- * middle of the top screen; R breaks the block under it, up to 5 blocks
- * away, at once (timed mining comes with tools, kickoff P-4), and L puts the
- * chosen block against the face looked at, never inside the player. The
- * meshes of the chunks a change touches are rebuilt. The bottom screen is
- * grass green with nine block slots along its foot (grass, dirt, stone,
- * then empty); tapping a slot chooses it. The game shows a new picture
- * every second screen refresh, 30 a second, and a counter in the bottom
- * screen's top-left corner shows the frames a second (its settings switch
- * comes in roadmap 0.7). START quits, on the new-world screen too. */
+/* Roadmap row 2-04: the endless world, a settings screen, a seed for each
+ * new world, and saving. The game starts on the new-world screen
+ * (newworld.h): the bottom screen shows the world's seed, random at first,
+ * over the sky blue top screen. X (or its button) rolls a new random seed,
+ * Y (or its button) opens the 3DS keyboard to type one (a whole number is
+ * that seed, words become one, seed.h), and A (or PLAY) makes a new world
+ * from that seed, in the next free folder on the SD card (save.h). When a
+ * saved world can be carried on, B (or CONTINUE, in place of the title)
+ * opens the world played last instead: its changed chunks, where the player
+ * stood and looked, the hotbar. The view distance and the world played last
+ * are kept too. A new player starts in chunk (0, 0) of the seed's gentle
+ * hills, facing north. The ground is made as the player walks (stream.h):
+ * the chunks out to the view distance round the player's chunk are drawn
+ * (3 at start: 7 x 7), one mesh each, and one more ring round them is kept;
+ * one chunk or mesh is made each frame, nearest first, and chunks further
+ * away are put away, changed ones saved to the SD card as they go (and
+ * loaded from it when they come back). SELECT opens and closes the settings
+ * screen on the bottom screen (settings.h): a slider for the view distance,
+ * 2 to 5, moved by touch or the D-pad left and right; while it is open the
+ * player stands still and R, L, SAVE and the hotbar do nothing, but the
+ * world goes on being made and drawn, so a new view distance shows at once.
+ * The Circle Pad walks, by where the camera faces; gravity holds the player
+ * on the ground, blocks stop them, and walking into a one-block step hops up
+ * it (no jump button). A B X Y look around, and so does the C-stick on a
+ * New 3DS (an Old 3DS has none). A crosshair marks the middle of the top
+ * screen; R breaks the block under it, up to 5 blocks away, at once (timed
+ * mining comes with tools, kickoff P-4), and L puts the chosen block against
+ * the face looked at, never inside the player. The meshes of the chunks a
+ * change touches are rebuilt. The bottom screen is grass green with nine
+ * block slots along its foot (grass, dirt, stone, then empty); tapping a
+ * slot chooses it. SAVE in its top-right corner saves the world (saveui.h),
+ * and so does an autosave every 3 minutes; a message says how it went. The
+ * game shows a new picture every second screen refresh, 30 a second, and a
+ * counter in the bottom screen's top-left corner shows the frames a second
+ * (its settings switch comes in roadmap 0.7). START saves and quits; on the
+ * new-world screen it just quits. The chunk meshes are in meshes.c, the
+ * new-world screen's loop in start.c, frame pacing and the crosshair in
+ * frame.c. */
 
 #define PI 3.14159265f
 
 static World s_world;
-/* One mesh per world slot, for the chunk in that slot (world.h);
- * s_meshed[j][i] says slot [j][i]'s chunk has its mesh built, which can be
- * empty (s_mesh NULL). */
-static MeshVertex *s_mesh[WORLD_SLOTS][WORLD_SLOTS];
-static int s_verts[WORLD_SLOTS][WORLD_SLOTS];
-static bool s_meshed[WORLD_SLOTS][WORLD_SLOTS];
 static uint32_t s_atlas[BLOCKTEX_SIZE * BLOCKTEX_SIZE]; /* the hotbar's icons */
 static Settings s_settings;
-
-static void free_mesh(int i, int j)
-{
-    if (s_mesh[j][i]) {
-        linearFree(s_mesh[j][i]);
-        s_mesh[j][i] = NULL;
-    }
-    s_verts[j][i] = 0;
-    s_meshed[j][i] = false;
-}
-
-static void free_meshes(void)
-{
-    int i, j;
-
-    for (j = 0; j < WORLD_SLOTS; j++)
-        for (i = 0; i < WORLD_SLOTS; i++)
-            free_mesh(i, j);
-}
-
-/* (Re)build the mesh of loaded chunk (cx, cz) in linear memory for the GPU.
- * Only between frames: gpu_frame_end() has waited for the GPU, so the old
- * mesh is no longer being read. False if out of memory. */
-static bool build_mesh(int cx, int cz)
-{
-    int i = world_slot(cx), j = world_slot(cz);
-    const Chunk *c = world_chunk(&s_world, cx, cz);
-    const Chunk *nb[NB_COUNT];
-    int faces;
-
-    free_mesh(i, j);
-    if (c == NULL)
-        return true;
-    world_neighbours(&s_world, cx, cz, nb);
-    faces = chunk_mesh_count(c, nb);
-    s_meshed[j][i] = true;
-    if (faces == 0)
-        return true;
-    s_mesh[j][i] = linearAlloc(faces * MESH_FACE_VERTS * sizeof(MeshVertex));
-    if (!s_mesh[j][i])
-        return false;
-    s_verts[j][i] = chunk_mesh_build(c, nb, (float)(cx * CHUNK_SIZE), (float)(cz * CHUNK_SIZE),
-                                     s_mesh[j][i], faces * MESH_FACE_VERTS);
-    if (s_verts[j][i] <= 0) {
-        free_mesh(i, j);
-        return false;
-    }
-    GSPGPU_FlushDataCache(s_mesh[j][i], s_verts[j][i] * sizeof(MeshVertex));
-    return true;
-}
-
-#define STREAM_ALL (-1)
-
-/* Keep the world round the player's chunk (pcx, pcz) out to view distance
- * view (stream.h): put away the far chunks and the meshes that should go,
- * then run up to jobs jobs (STREAM_ALL: until none are left). Between frames
- * only, like build_mesh(). False if out of memory for a mesh. */
-static bool stream_frame(int pcx, int pcz, int view, int jobs)
-{
-    StreamJob job;
-    int i, j;
-
-    stream_put_away(&s_world, pcx, pcz, view);
-    for (j = 0; j < WORLD_SLOTS; j++)
-        for (i = 0; i < WORLD_SLOTS; i++)
-            if (s_meshed[j][i] && !stream_keep_mesh(&s_world, i, j, pcx, pcz, view))
-                free_mesh(i, j);
-    while ((jobs == STREAM_ALL || jobs-- > 0) &&
-           stream_next(&s_world, s_meshed, pcx, pcz, view, &job)) {
-        if (job.kind == STREAM_LOAD) {
-            free_mesh(world_slot(job.cx), world_slot(job.cz));
-            world_load(&s_world, job.cx, job.cz);
-        } else if (!build_mesh(job.cx, job.cz)) {
-            return false;
-        }
-    }
-    return true;
-}
-
-/* Rebuild the built meshes a change to block column (x, z) touches (a chunk
- * still waiting for its mesh gets the change when it is built). False if
- * out of memory. */
-static bool rebuild_around(int x, int z)
-{
-    int touched[3][2];
-    int n, k;
-
-    n = world_touched_chunks(&s_world, x, z, touched);
-    for (k = 0; k < n; k++)
-        if (s_meshed[world_slot(touched[k][1])][world_slot(touched[k][0])] &&
-            !build_mesh(touched[k][0], touched[k][1]))
-            return false;
-    return true;
-}
+static SaveWorld s_save;
+static bool s_saving;       /* s_save is open: the world has a folder */
+static SaveSettings s_kept; /* settings.dat, as read or last written */
+static SaveUiMessage s_msg; /* the save message, shown until s_msg_until */
+static u64 s_msg_until;
 
 /* The block under the crosshair, if one is in reach. */
 static bool looked_at(const Camera *cam, RayHit *hit)
@@ -177,7 +90,7 @@ static bool break_looked_at(const Camera *cam)
 
     if (!looked_at(cam, &hit) || !world_break(&s_world, hit.x, hit.y, hit.z))
         return true;
-    return rebuild_around(hit.x, hit.z);
+    return meshes_rebuild_around(&s_world, hit.x, hit.z);
 }
 
 /* L: put block b against the face under the crosshair (not inside the
@@ -191,32 +104,14 @@ static bool place_looked_at(const Camera *cam, const Player *player, int b)
 
     if (!looked_at(cam, &hit) || !place_block(&s_world, player, &hit, b, &x, &y, &z))
         return true;
-    return rebuild_around(x, z);
-}
-
-/* The crosshair, drawn by the CPU straight into the top screen's picture
- * after the GPU has copied the frame there. The 3DS keeps that picture
- * standing on its side: gfxGetFramebuffer() calls the top screen 240 wide
- * and 400 tall, so they are passed swapped. Its cache lines are thrown away
- * first (the GPU wrote the memory behind the CPU's back, and an old line
- * written back would put last frame's pixels over this one), then written
- * out. */
-static void draw_crosshair(void)
-{
-    u16 fw = 0, fh = 0;
-    u8 *fb = gfxGetFramebuffer(GFX_TOP, GFX_LEFT, &fw, &fh);
-    u32 size = (u32)fw * fh * 3;
-
-    GSPGPU_InvalidateDataCache(fb, size);
-    fb_crosshair_bgr8(fb, fh, fw);
-    GSPGPU_FlushDataCache(fb, size);
+    return meshes_rebuild_around(&s_world, x, z);
 }
 
 /* The bottom screen: the settings screen while it is open, else grass green
- * with the hotbar along its foot; the frame counter in the top-left corner
- * either way. Its picture stands on its side like the top screen's
- * (gfxGetFramebuffer() calls it 240 wide and 320 tall), so the sizes are
- * passed swapped. */
+ * with the hotbar along its foot, the SAVE button and the save message
+ * while it lasts; the frame counter in the top-left corner either way. Its
+ * picture stands on its side like the top screen's (gfxGetFramebuffer()
+ * calls it 240 wide and 320 tall), so the sizes are passed swapped. */
 static void draw_bottom(const Hotbar *hb, int fps_shown)
 {
     u16 fw = 0, fh = 0;
@@ -227,8 +122,43 @@ static void draw_bottom(const Hotbar *hb, int fps_shown)
     } else {
         fb_fill_bgr8(fb, fw * fh, 80, 150, 60);
         hotbar_draw_bgr8(fb, fh, fw, hb, s_atlas);
+        saveui_draw_bgr8(fb, fh, fw, osGetTime() < s_msg_until ? s_msg : SAVEUI_NONE);
     }
     fps_draw_bgr8(fb, fh, fw, fps_shown);
+}
+
+/* Save the game: the world's changed chunks, then world.dat (seed, where
+ * the player stands and looks, the hotbar), then settings.dat. True only if
+ * all of it was written; false too when the world has no folder (the
+ * settings are still written). */
+static bool save_game(const Player *p, const Camera *cam, const Hotbar *hb)
+{
+    SaveInfo info;
+    bool ok = false;
+    int k;
+
+    if (s_saving) {
+        ok = world_save_changed(&s_world) == 0;
+        info.seed = s_world.seed;
+        info.x = p->x;
+        info.y = p->y;
+        info.z = p->z;
+        info.yaw = cam->yaw;
+        info.pitch = cam->pitch;
+        for (k = 0; k < HOTBAR_SLOTS; k++)
+            info.hotbar[k] = (uint8_t)hb->block[k];
+        info.chosen = (uint8_t)hb->chosen;
+        ok = save_world_write(&s_save, &info) && ok;
+    }
+    s_kept.view = s_settings.view;
+    return save_settings_write(SAVE_ROOT, &s_kept) && ok;
+}
+
+/* Show how a save went, for SAVEUI_MSG_MS. */
+static void show_saved(bool ok)
+{
+    s_msg = ok ? SAVEUI_SAVED : SAVEUI_FAILED;
+    s_msg_until = osGetTime() + SAVEUI_MSG_MS;
 }
 
 /* Walking speed from the Circle Pad, by where the camera faces. */
@@ -255,76 +185,6 @@ static void read_look(LookInput *in, u32 ignore)
     in->cy = cs.dy;
 }
 
-/* Hand the frame over, then wait for screen refreshes until the second one
- * since the last frame's wait: 30 frames a second. */
-static void end_frame(FpsCounter *fps, u64 *paced)
-{
-    gfxSwapBuffers();
-    do
-        gspWaitForVBlank();
-    while (!fps_pace_done(*paced, svcGetSystemTick()));
-    *paced = svcGetSystemTick();
-    fps_frame(fps, *paced);
-}
-
-/* Y on the new-world screen: the 3DS keyboard, to type a seed. Only OK
- * with something typed changes *seed; Cancel leaves it. The keys pressed to
- * close the keyboard can still be held when it returns, so one scan takes
- * them in and they do not press anything on the new-world screen. */
-static void type_seed(uint32_t *seed)
-{
-    SwkbdState kb;
-    char text[SEED_TYPED_MAX * 4 + 1]; /* UTF-8: up to 4 bytes a character */
-
-    swkbdInit(&kb, SWKBD_TYPE_NORMAL, 2, SEED_TYPED_MAX);
-    swkbdSetHintText(&kb, "A number, or any words");
-    swkbdSetValidation(&kb, SWKBD_NOTEMPTY_NOTBLANK, 0, 0);
-    text[0] = '\0';
-    if (swkbdInputText(&kb, text, sizeof text) == SWKBD_BUTTON_CONFIRM)
-        seed_from_text(text, seed);
-    hidScanInput();
-}
-
-/* The new-world screen, until the player starts the world: true with its
- * seed in *seed, or false if they quit (START, or the system closing the
- * game). The top screen is sky blue, nothing made yet. */
-static bool choose_seed(uint32_t *seed, FpsCounter *fps, u64 *paced)
-{
-    *seed = seed_random(svcGetSystemTick());
-    while (aptMainLoop()) {
-        u32 down;
-        NewWorldButton tapped = NEWWORLD_NONE;
-        u16 fw = 0, fh = 0;
-        u8 *fb;
-
-        hidScanInput();
-        down = hidKeysDown();
-        if (down & KEY_START)
-            return false;
-        if (down & KEY_TOUCH) {
-            touchPosition touch;
-
-            hidTouchRead(&touch);
-            tapped = newworld_button_at(touch.px, touch.py);
-        }
-        if ((down & KEY_A) || tapped == NEWWORLD_PLAY)
-            return true;
-        if ((down & KEY_X) || tapped == NEWWORLD_RANDOM)
-            *seed = seed_random(svcGetSystemTick());
-        if ((down & KEY_Y) || tapped == NEWWORLD_TYPE)
-            type_seed(seed);
-
-        fb = gfxGetFramebuffer(GFX_BOTTOM, GFX_LEFT, &fw, &fh);
-        newworld_draw_bgr8(fb, fh, fw, *seed);
-        fps_draw_bgr8(fb, fh, fw, fps->shown);
-        gfxFlushBuffers();
-        gpu_frame_begin();
-        gpu_frame_end();
-        end_frame(fps, paced);
-    }
-    return false;
-}
-
 int main(void)
 {
     /* Facing north, looking a little down; the eye follows the player. */
@@ -333,14 +193,24 @@ int main(void)
     Hotbar hotbar;
     FpsCounter fps;
     Mat4 proj;
-    u64 last, paced;
+    SaveInfo info;
+    u64 last, paced, saved_at;
     uint32_t seed;
     u32 stale;
+    StartChoice start;
+    bool cont = false;
+    int k, pcx = 0, pcz = 0;
 
     gfxInitDefault();
     blocktex_build(s_atlas);
     hotbar_init(&hotbar);
     settings_init(&s_settings);
+    /* The kept settings and the world played last, from the SD card. */
+    s_kept.view = s_settings.view;
+    s_kept.last = 0;
+    save_root_make(SAVE_ROOT);
+    if (save_settings_read(SAVE_ROOT, &s_kept))
+        s_settings.view = s_kept.view;
     if (!gpu_init()) {
         gpu_exit();
         gfxExit();
@@ -348,25 +218,68 @@ int main(void)
     }
     paced = svcGetSystemTick();
     fps_init(&fps, paced);
-    if (!choose_seed(&seed, &fps, &paced)) {
+    start = start_choose_world(&seed, s_kept.last > 0 && save_world_exists(SAVE_ROOT, s_kept.last),
+                               &fps, &paced);
+    if (start == START_QUIT) {
         gpu_exit();
         gfxExit();
         return 0;
     }
+    if (start == START_CONTINUE) {
+        cont = save_world_open(&s_save, SAVE_ROOT, s_kept.last, false) &&
+               save_world_read(&s_save, &info);
+        if (cont)
+            seed = info.seed;
+        else
+            save_world_close(&s_save); /* a new world from the seed shown, then */
+    }
+    if (cont) {
+        s_saving = true;
+    } else {
+        int id = save_free_id(SAVE_ROOT);
+
+        s_saving = id > 0 && save_world_open(&s_save, SAVE_ROOT, id, true);
+        if (s_saving)
+            s_kept.last = id;
+    }
     world_init(&s_world, seed);
-    if (!stream_frame(0, 0, s_settings.view, STREAM_ALL)) {
-        free_meshes();
+    if (s_saving)
+        world_set_store(&s_world, &s_save.store);
+    if (cont) {
+        pcx = block_to_chunk((int)floorf(info.x));
+        pcz = block_to_chunk((int)floorf(info.z));
+    }
+    if (!meshes_stream(&s_world, pcx, pcz, s_settings.view, MESHES_ALL)) {
+        meshes_free();
+        save_world_close(&s_save);
         gpu_exit();
         gfxExit();
         return 1;
     }
-    player_spawn(&player, &s_world, 0, 0);
+    if (cont) {
+        player.x = info.x;
+        player.y = info.y;
+        player.z = info.z;
+        player.vy = 0.0f;
+        player.on_ground = false;
+        cam.yaw = info.yaw;
+        cam.pitch = info.pitch;
+        camera_turn(&cam, 0.0f, 0.0f); /* keeps them in range */
+        for (k = 0; k < HOTBAR_SLOTS; k++)
+            hotbar.block[k] = info.hotbar[k];
+        hotbar.chosen = info.chosen;
+    } else {
+        player_spawn(&player, &s_world, 0, 0);
+        save_game(&player, &cam, &hotbar); /* so the new world can be carried on at once */
+    }
     mat4_persp_tilt(&proj, 60.0f * PI / 180.0f, 400.0f / 240.0f, 0.1f, 160.0f);
 
     /* Making the world took a while: time, frame pacing and the frame count
-     * start again from now. A (PLAY) also turns right, so keys still held
-     * from the new-world screen do nothing until they are let go. */
+     * start again from now. A (PLAY) also turns right and B (CONTINUE)
+     * down, so keys still held from the new-world screen do nothing until
+     * they are let go. */
     last = osGetTime();
+    saved_at = last;
     paced = svcGetSystemTick();
     fps_init(&fps, paced);
     hidScanInput();
@@ -376,7 +289,6 @@ int main(void)
         Mat4 view, mvp;
         float yaw_rate, pitch_rate, vx, vz, dt;
         u64 now;
-        int i, j;
 
         hidScanInput();
         stale &= hidKeysHeld(); /* a key let go is no longer left out */
@@ -417,8 +329,8 @@ int main(void)
         cam.y = player.y + PLAYER_EYE;
         cam.z = player.z;
         /* One new chunk or mesh a frame round where the player now is. */
-        if (!stream_frame(block_to_chunk((int)floorf(player.x)),
-                          block_to_chunk((int)floorf(player.z)), s_settings.view, 1))
+        if (!meshes_stream(&s_world, block_to_chunk((int)floorf(player.x)),
+                           block_to_chunk((int)floorf(player.z)), s_settings.view, 1))
             break; /* out of memory for a mesh */
         if (!s_settings.open) {
             if ((hidKeysDown() & KEY_R) && !break_looked_at(&cam))
@@ -427,11 +339,24 @@ int main(void)
                 touchPosition touch;
 
                 hidTouchRead(&touch);
-                hotbar_tap(&hotbar, touch.px, touch.py);
+                if (saveui_hit(touch.px, touch.py)) {
+                    show_saved(save_game(&player, &cam, &hotbar));
+                    saved_at = osGetTime();
+                } else {
+                    hotbar_tap(&hotbar, touch.px, touch.py);
+                }
             }
             if ((hidKeysDown() & KEY_L) &&
                 !place_looked_at(&cam, &player, hotbar_block(&hotbar)))
                 break;
+        }
+        if (save_due(osGetTime(), saved_at)) {
+            show_saved(save_game(&player, &cam, &hotbar));
+            saved_at = osGetTime();
+        }
+        if (s_world.lost) { /* a changed chunk put away could not be saved */
+            s_world.lost = 0;
+            show_saved(false);
         }
 
         draw_bottom(&hotbar, fps.shown);
@@ -440,15 +365,15 @@ int main(void)
         camera_view(&view, &cam);
         mat4_mul(&mvp, &proj, &view);
         gpu_frame_begin();
-        for (j = 0; j < WORLD_SLOTS; j++)
-            for (i = 0; i < WORLD_SLOTS; i++)
-                gpu_draw(s_mesh[j][i], s_verts[j][i], &mvp);
+        meshes_draw(&mvp);
         gpu_frame_end();
-        draw_crosshair();
-        end_frame(&fps, &paced);
+        frame_crosshair();
+        frame_end(&fps, &paced);
     }
 
-    free_meshes();
+    save_game(&player, &cam, &hotbar); /* START, or the system closing the game */
+    save_world_close(&s_save);
+    meshes_free();
     gpu_exit();
     gfxExit();
     return 0;

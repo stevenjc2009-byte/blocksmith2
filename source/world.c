@@ -10,9 +10,18 @@ void world_init(World *w, uint32_t seed)
     int i, j;
 
     w->seed = seed;
+    w->store = NULL;
+    w->lost = 0;
     for (j = 0; j < WORLD_SLOTS; j++)
-        for (i = 0; i < WORLD_SLOTS; i++)
+        for (i = 0; i < WORLD_SLOTS; i++) {
             w->slots[j][i].loaded = false;
+            w->slots[j][i].changed = false;
+        }
+}
+
+void world_set_store(World *w, const WorldStore *store)
+{
+    w->store = store;
 }
 
 int world_slot(int c)
@@ -27,11 +36,34 @@ static WorldSlot *slot_of(const World *w, int cx, int cz)
     return (WorldSlot *)&w->slots[world_slot(cz)][world_slot(cx)];
 }
 
+/* Hand a changed loaded chunk to the store; true if it was kept (or had
+ * nothing to keep). */
+static bool keep(World *w, WorldSlot *s)
+{
+    if (!s->loaded || !s->changed)
+        return true;
+    if (w->store == NULL || !w->store->save(w->store->ctx, &s->chunk, s->cx, s->cz))
+        return false;
+    s->changed = false;
+    return true;
+}
+
+/* Put away whatever chunk is in slot s. */
+static void put_away(World *w, WorldSlot *s)
+{
+    if (!keep(w, s))
+        w->lost++;
+    s->loaded = false;
+    s->changed = false;
+}
+
 void world_load(World *w, int cx, int cz)
 {
     WorldSlot *s = slot_of(w, cx, cz);
 
-    terrain_fill_chunk(&s->chunk, w->seed, cx, cz);
+    put_away(w, s);
+    if (w->store == NULL || !w->store->load(w->store->ctx, &s->chunk, cx, cz))
+        terrain_fill_chunk(&s->chunk, w->seed, cx, cz);
     s->cx = cx;
     s->cz = cz;
     s->loaded = true;
@@ -42,7 +74,24 @@ void world_unload(World *w, int cx, int cz)
     WorldSlot *s = slot_of(w, cx, cz);
 
     if (s->loaded && s->cx == cx && s->cz == cz)
-        s->loaded = false;
+        put_away(w, s);
+}
+
+int world_save_changed(World *w)
+{
+    int i, j, failed = 0;
+
+    for (j = 0; j < WORLD_SLOTS; j++)
+        for (i = 0; i < WORLD_SLOTS; i++)
+            failed += !keep(w, &w->slots[j][i]);
+    return failed;
+}
+
+bool world_chunk_changed(const World *w, int cx, int cz)
+{
+    const WorldSlot *s = slot_of(w, cx, cz);
+
+    return s->loaded && s->cx == cx && s->cz == cz && s->changed;
 }
 
 const Chunk *world_chunk(const World *w, int cx, int cz)
@@ -61,10 +110,17 @@ int world_get(const World *w, int x, int y, int z)
 
 void world_set(World *w, int x, int y, int z, int block)
 {
-    Chunk *c = (Chunk *)world_chunk(w, block_to_chunk(x), block_to_chunk(z));
+    int cx = block_to_chunk(x), cz = block_to_chunk(z);
+    int lx = block_to_local(x), lz = block_to_local(z);
+    Chunk *c = (Chunk *)world_chunk(w, cx, cz);
+    int before;
 
-    if (c)
-        chunk_set(c, block_to_local(x), y, block_to_local(z), block);
+    if (c == NULL)
+        return;
+    before = chunk_get(c, lx, y, lz);
+    chunk_set(c, lx, y, lz, block);
+    if (chunk_get(c, lx, y, lz) != before)
+        slot_of(w, cx, cz)->changed = true;
 }
 
 bool world_break(World *w, int x, int y, int z)

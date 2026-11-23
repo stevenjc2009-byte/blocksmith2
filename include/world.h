@@ -18,34 +18,68 @@
  * chunks round the player always fits; loading a chunk puts away whatever
  * chunk was in its slot. stream.h decides which chunks are loaded.
  *
- * A chunk that is not loaded reads as air and ignores writes. */
+ * A chunk that is not loaded reads as air and ignores writes.
+ *
+ * Saving (roadmap row 2-04): a world can be given a store (save.h hands it
+ * one). Then a chunk being loaded comes from the store if it was saved
+ * there, else from the seed; and a chunk that was changed since it was
+ * loaded or last kept goes to the store when it is put away, or when
+ * world_save_changed() is called. With no store, changes to a chunk are
+ * lost when it is put away. */
 
 #define WORLD_SLOTS 13
 
+/* Where changed chunks are kept. load fills c with chunk (cx, cz) as it was
+ * saved and returns true, or returns false if it never was (the chunk is
+ * then made from the seed); save keeps changed chunk (cx, cz) and returns
+ * false if it could not. Both get ctx back. */
+typedef struct {
+    bool (*load)(void *ctx, Chunk *c, int cx, int cz);
+    bool (*save)(void *ctx, const Chunk *c, int cx, int cz);
+    void *ctx;
+} WorldStore;
+
 typedef struct {
     Chunk chunk;
-    int cx, cz;  /* which chunk is in the slot, when loaded */
+    int cx, cz;   /* which chunk is in the slot, when loaded */
     bool loaded;
+    bool changed; /* a block changed since it was loaded or last kept */
 } WorldSlot;
 
 typedef struct {
     WorldSlot slots[WORLD_SLOTS][WORLD_SLOTS]; /* [z][x], see world_slot() */
     uint32_t seed;
+    const WorldStore *store; /* NULL: none */
+    int lost; /* changed chunks put away that the store could not keep */
 } World;
 
-/* An empty world: nothing loaded yet. Its ground comes from the seed. */
+/* An empty world: nothing loaded yet, no store. Its ground comes from the
+ * seed. */
 void world_init(World *w, uint32_t seed);
+
+/* Give the world a store (NULL: none), which must stay valid while the
+ * world uses it. Give it before loading any chunk. */
+void world_set_store(World *w, const WorldStore *store);
 
 /* The slot index (0 to WORLD_SLOTS - 1) for chunk position c, on x or z. */
 int world_slot(int c);
 
-/* Make chunk (cx, cz)'s ground from the seed (terrain.h) in its slot,
- * putting away the chunk that was there. Changes made to a chunk are lost
- * when it is put away (saving comes in roadmap row 2-04). */
+/* Load chunk (cx, cz) into its slot, putting away the chunk that was there:
+ * from the store if it was saved there, else its ground from the seed
+ * (terrain.h). */
 void world_load(World *w, int cx, int cz);
 
-/* Put chunk (cx, cz) away, if it is loaded. */
+/* Put chunk (cx, cz) away, if it is loaded: if it was changed, it goes to
+ * the store first (w->lost counts one that could not be kept). */
 void world_unload(World *w, int cx, int cz);
+
+/* Hand every loaded chunk changed since it was loaded or last kept to the
+ * store. Returns how many could not be kept (all of them with no store);
+ * those stay marked changed. */
+int world_save_changed(World *w);
+
+/* Is chunk (cx, cz) loaded and changed since it was loaded or last kept? */
+bool world_chunk_changed(const World *w, int cx, int cz);
 
 /* Chunk (cx, cz), or NULL if it is not loaded. */
 const Chunk *world_chunk(const World *w, int cx, int cz);
@@ -53,7 +87,8 @@ const Chunk *world_chunk(const World *w, int cx, int cz);
 /* The block at world position (x, y, z); BLOCK_AIR outside a loaded chunk. */
 int world_get(const World *w, int x, int y, int z);
 
-/* Set the block at world (x, y, z); spots outside a loaded chunk are ignored. */
+/* Set the block at world (x, y, z); spots outside a loaded chunk are
+ * ignored. A block that really changes marks its chunk changed. */
 void world_set(World *w, int x, int y, int z, int block);
 
 /* Break the block at (x, y, z): it turns to air. False, and nothing

@@ -16,7 +16,8 @@
  * - One ring further, ring view + 1, is loaded too, so every drawn chunk
  *   has all four neighbours and its mesh hides the faces between them from
  *   the start (no rebuild when a neighbour arrives).
- * - Everything further away is put away (forgotten until saving, row 2-04).
+ * - Everything further away is put away (a changed chunk saved first, if
+ *   the world has a store: world.h).
  *
  * New work comes as jobs, one at a time, nearest first: load a chunk (make
  * its ground), or build a chunk's mesh once it and its four neighbours are

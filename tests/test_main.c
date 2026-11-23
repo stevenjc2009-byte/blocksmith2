@@ -15,6 +15,7 @@ int main(void)
     test_look();
     test_camera();
     test_chunk();
+    test_chunk_ref();
     test_terrain();
     test_world();
     test_stream();
@@ -29,6 +30,10 @@ int main(void)
     test_settings();
     test_seed();
     test_newworld();
+    test_save();
+    test_save_files();
+    test_save_world();
+    test_saveui();
 
     printf("PC tests: %d checks, %d failed\n", g_checks, g_fails);
     if (g_checks == 0) {

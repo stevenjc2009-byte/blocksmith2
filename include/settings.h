@@ -9,9 +9,9 @@
  * view distance (kickoff W-3, SC-5), how many chunks out from the player's
  * chunk are drawn. SELECT opens and closes it on the bottom screen; while
  * it is open the player stands still but the world keeps being made and
- * drawn, so a change shows on the top screen at once. The choice is not
- * kept when the game quits yet (saving is roadmap row 2-04). Pure C, no 3DS
- * calls, so the PC tests can run it.
+ * drawn, so a change shows on the top screen at once. The choice is kept
+ * on the SD card with the game's saves (settings.dat, save.h). Pure C, no
+ * 3DS calls, so the PC tests can run it.
  *
  * Bottom-screen points are as the touch screen reports them: x 0..319 from
  * the left, y 0..239 from the top. The view distances run from

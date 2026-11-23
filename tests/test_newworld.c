@@ -42,16 +42,16 @@ static void test_buttons_at(void)
             bot = top + NEWWORLD_BUTTON_H - 1;
 
         /* Every corner and the middle press it... */
-        CHECK_EQ_INT(newworld_button_at(l, top), rows[i].b);
-        CHECK_EQ_INT(newworld_button_at(r, top), rows[i].b);
-        CHECK_EQ_INT(newworld_button_at(l, bot), rows[i].b);
-        CHECK_EQ_INT(newworld_button_at(r, bot), rows[i].b);
-        CHECK_EQ_INT(newworld_button_at(160, top + NEWWORLD_BUTTON_H / 2), rows[i].b);
+        CHECK_EQ_INT(newworld_button_at(l, top, false), rows[i].b);
+        CHECK_EQ_INT(newworld_button_at(r, top, false), rows[i].b);
+        CHECK_EQ_INT(newworld_button_at(l, bot, false), rows[i].b);
+        CHECK_EQ_INT(newworld_button_at(r, bot, false), rows[i].b);
+        CHECK_EQ_INT(newworld_button_at(160, top + NEWWORLD_BUTTON_H / 2, false), rows[i].b);
         /* ...one step outside each edge does not. */
-        CHECK_EQ_INT(newworld_button_at(l - 1, top + 5), NEWWORLD_NONE);
-        CHECK_EQ_INT(newworld_button_at(r + 1, top + 5), NEWWORLD_NONE);
-        CHECK_EQ_INT(newworld_button_at(160, top - 1), NEWWORLD_NONE);
-        CHECK_EQ_INT(newworld_button_at(160, bot + 1), NEWWORLD_NONE);
+        CHECK_EQ_INT(newworld_button_at(l - 1, top + 5, false), NEWWORLD_NONE);
+        CHECK_EQ_INT(newworld_button_at(r + 1, top + 5, false), NEWWORLD_NONE);
+        CHECK_EQ_INT(newworld_button_at(160, top - 1, false), NEWWORLD_NONE);
+        CHECK_EQ_INT(newworld_button_at(160, bot + 1, false), NEWWORLD_NONE);
     }
     /* Over the whole screen: a point presses the button whose box holds it,
      * and nothing anywhere else (the words, the gaps, the edges). */
@@ -65,10 +65,10 @@ static void test_buttons_at(void)
                     want = rows[i].b;
             if (want == NEWWORLD_NONE) {
                 none_n++;
-                none_ok += newworld_button_at(x, y) == NEWWORLD_NONE;
+                none_ok += newworld_button_at(x, y, false) == NEWWORLD_NONE;
             } else {
                 inside_n++;
-                inside_ok += newworld_button_at(x, y) == want;
+                inside_ok += newworld_button_at(x, y, false) == want;
             }
         }
     CHECK_EQ_INT(inside_ok, inside_n);
@@ -133,24 +133,30 @@ static void check_button(int top, const char *text, int r, int g, int b)
     CHECK_EQ_INT(edge_bg, edge_n);
 }
 
-/* The whole screen drawn for one seed. */
-static void check_drawn(uint32_t seed)
+/* The whole screen drawn for one seed; saved: a saved world can be carried
+ * on (CONTINUE in place of the title, PLAY reads NEW WORLD). */
+static void check_drawn(uint32_t seed, bool saved)
 {
     char text[SEED_TEXT_SIZE];
     int lit, n, guard_ok = 1, x, y, bg_rows = 0;
 
     memset(s_pic, 0x77, sizeof s_pic);
     memset(s_pic + BW * BH * 3, 0xA5, GUARD);
-    newworld_draw_bgr8(s_pic, BW, BH, seed);
+    newworld_draw_bgr8(s_pic, BW, BH, seed, saved);
     for (n = 0; n < GUARD; n++)
         guard_ok &= s_pic[BW * BH * 3 + n] == 0xA5;
     CHECK_EQ_INT(guard_ok, 1);
 
     /* The words, each exactly the font's letters, centred on the screen. */
-    CHECK_EQ_INT(text_wrong(0, BW, NEWWORLD_TITLE_Y, NEWWORLD_TITLE_Y + FONT_H * 3, NEWWORLD_TITLE_Y, BW / 2,
-                            "NEW WORLD", 3, 255, 255, 255, NEWWORLD_BG_R, NEWWORLD_BG_G,
-                            NEWWORLD_BG_B, &lit), 0);
-    CHECK_EQ_INT(lit > 100, 1);
+    if (saved) {
+        check_button(NEWWORLD_CONTINUE_Y, "B  CONTINUE", NEWWORLD_PLAY_R, NEWWORLD_PLAY_G,
+                     NEWWORLD_PLAY_B);
+    } else {
+        CHECK_EQ_INT(text_wrong(0, BW, NEWWORLD_TITLE_Y, NEWWORLD_TITLE_Y + FONT_H * 3, NEWWORLD_TITLE_Y,
+                                BW / 2, "NEW WORLD", 3, 255, 255, 255, NEWWORLD_BG_R,
+                                NEWWORLD_BG_G, NEWWORLD_BG_B, &lit), 0);
+        CHECK_EQ_INT(lit > 100, 1);
+    }
     CHECK_EQ_INT(text_wrong(0, BW, NEWWORLD_LABEL_Y, NEWWORLD_LABEL_Y + FONT_H * 2, NEWWORLD_LABEL_Y, BW / 2, "SEED",
                             2, 200, 200, 200, NEWWORLD_BG_R, NEWWORLD_BG_G, NEWWORLD_BG_B, &lit),
                  0);
@@ -165,18 +171,19 @@ static void check_drawn(uint32_t seed)
                  NEWWORLD_BUTTON_B);
     check_button(NEWWORLD_TYPE_Y, "Y  TYPE A SEED", NEWWORLD_BUTTON_R, NEWWORLD_BUTTON_G,
                  NEWWORLD_BUTTON_B);
-    check_button(NEWWORLD_PLAY_Y, "A  PLAY", NEWWORLD_PLAY_R, NEWWORLD_PLAY_G, NEWWORLD_PLAY_B);
+    check_button(NEWWORLD_PLAY_Y, saved ? "A  NEW WORLD" : "A  PLAY", NEWWORLD_PLAY_R,
+                 NEWWORLD_PLAY_G, NEWWORLD_PLAY_B);
 
     /* Background everywhere else: above the title, between the lines, and
      * the bands left and right of the buttons. */
     for (y = 0; y < BH; y++) {
         int row_bg = 1;
-        int in_words = (y >= NEWWORLD_TITLE_Y && y < NEWWORLD_TITLE_Y + FONT_H * 3) ||
+        int in_words = (!saved && y >= NEWWORLD_TITLE_Y && y < NEWWORLD_TITLE_Y + FONT_H * 3) ||
                        (y >= NEWWORLD_LABEL_Y && y < NEWWORLD_LABEL_Y + FONT_H * 2) ||
                        (y >= NEWWORLD_SEED_Y && y < NEWWORLD_SEED_Y + FONT_H * 2);
 
         for (x = 0; x < BW; x++) {
-            int in_button = newworld_button_at(x, y) != NEWWORLD_NONE;
+            int in_button = newworld_button_at(x, y, saved) != NEWWORLD_NONE;
 
             if (in_button || in_words)
                 continue;
@@ -191,15 +198,22 @@ static void test_draw(void)
 {
     char a[SEED_TEXT_SIZE], b[SEED_TEXT_SIZE];
 
-    check_drawn(2026);
-    check_drawn(0);
-    check_drawn(0x80000000u); /* "-2147483648", the longest */
-    check_drawn(0x7FFFFFFFu);
-    check_drawn(seed_random(77));
-    /* Two seeds, two pictures: the seed line is what changes. */
-    newworld_draw_bgr8(s_pic, BW, BH, 2026);
+    check_drawn(2026, false);
+    check_drawn(0, false);
+    check_drawn(0x80000000u, false); /* "-2147483648", the longest */
+    check_drawn(0x7FFFFFFFu, false);
+    check_drawn(seed_random(77), false);
+    check_drawn(2026, true);
+    check_drawn(0x80000000u, true);
+    /* With a save the picture differs; without one it is row 2-03's. */
+    newworld_draw_bgr8(s_pic, BW, BH, 2026, true);
     memcpy(s_ref, s_pic, BW * BH * 3);
-    newworld_draw_bgr8(s_pic, BW, BH, 2027);
+    newworld_draw_bgr8(s_pic, BW, BH, 2026, false);
+    CHECK_EQ_INT(memcmp(s_ref, s_pic, BW * BH * 3) != 0, 1);
+    /* Two seeds, two pictures: the seed line is what changes. */
+    newworld_draw_bgr8(s_pic, BW, BH, 2026, false);
+    memcpy(s_ref, s_pic, BW * BH * 3);
+    newworld_draw_bgr8(s_pic, BW, BH, 2027, false);
     CHECK_EQ_INT(memcmp(s_ref, s_pic, BW * BH * 3) != 0, 1);
     seed_to_text(2026, a);
     seed_to_text(2027, b);
@@ -209,8 +223,42 @@ static void test_draw(void)
     CHECK_EQ_INT(font_text_width(a, 2) < BW - 40, 1);
 }
 
+/* With a save: CONTINUE where the title was, the other buttons as before;
+ * without one nothing answers there. */
+static void test_continue_at(void)
+{
+    int l = NEWWORLD_BUTTON_X, r = NEWWORLD_BUTTON_X + NEWWORLD_BUTTON_W - 1;
+    int top = NEWWORLD_CONTINUE_Y, bot = NEWWORLD_CONTINUE_Y + NEWWORLD_BUTTON_H - 1;
+    int x, y, same = 1, cont_n = 0;
+
+    CHECK_EQ_INT(newworld_button_at(l, top, true), NEWWORLD_CONTINUE);
+    CHECK_EQ_INT(newworld_button_at(r, bot, true), NEWWORLD_CONTINUE);
+    CHECK_EQ_INT(newworld_button_at(160, top + 10, true), NEWWORLD_CONTINUE);
+    CHECK_EQ_INT(newworld_button_at(l - 1, top + 5, true), NEWWORLD_NONE);
+    CHECK_EQ_INT(newworld_button_at(r + 1, top + 5, true), NEWWORLD_NONE);
+    CHECK_EQ_INT(newworld_button_at(160, top - 1, true), NEWWORLD_NONE);
+    CHECK_EQ_INT(newworld_button_at(160, bot + 1, true), NEWWORLD_NONE);
+    CHECK_EQ_INT(newworld_button_at(160, top + 10, false), NEWWORLD_NONE);
+    for (y = -5; y < BH + 5; y++)
+        for (x = -5; x < BW + 5; x++) {
+            NewWorldButton with = newworld_button_at(x, y, true),
+                           without = newworld_button_at(x, y, false);
+
+            if (with == NEWWORLD_CONTINUE)
+                cont_n++;
+            else
+                same &= with == without;
+            same &= without != NEWWORLD_CONTINUE;
+        }
+    CHECK_EQ_INT(same, 1);
+    CHECK_EQ_INT(cont_n, NEWWORLD_BUTTON_W * NEWWORLD_BUTTON_H);
+    /* Above the seed's label, clear of it. */
+    CHECK_EQ_INT(NEWWORLD_CONTINUE_Y + NEWWORLD_BUTTON_H < NEWWORLD_LABEL_Y, 1);
+}
+
 void test_newworld(void)
 {
     test_buttons_at();
+    test_continue_at();
     test_draw();
 }
