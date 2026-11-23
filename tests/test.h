@@ -36,5 +36,8 @@ extern int g_fails;
 void test_world_coords(void);
 void test_framebuffer(void);
 void test_mat4(void);
+void test_texswizzle(void);
+void test_blocktex(void);
+void test_mesh(void);
 
 #endif

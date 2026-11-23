@@ -46,7 +46,8 @@ VERSION_MICRO	:=	0
 #---------------------------------------------------------------------------------
 HOSTCC		?=	gcc
 HOST_BUILD	:=	build-host
-CORE_SOURCES	:=	source/world_coords.c source/framebuffer.c source/mat4.c
+CORE_SOURCES	:=	source/world_coords.c source/framebuffer.c source/mat4.c \
+			source/texswizzle.c source/blocktex.c source/block.c source/mesh.c
 TEST_SOURCES	:=	$(wildcard tests/*.c)
 
 #---------------------------------------------------------------------------------
