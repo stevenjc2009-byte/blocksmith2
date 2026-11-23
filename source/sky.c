@@ -59,6 +59,7 @@ void sky_look(float t, SkyLook *out)
     out->sun_rgb[0] = 1.0f;
     out->sun_rgb[1] = 1.0f - 0.3f * k;
     out->sun_rgb[2] = 1.0f - 0.55f * k;
+    out->moon_rgb[0] = out->moon_rgb[1] = out->moon_rgb[2] = 1.0f;
     /* Shown while the square's top edge is above the horizon. */
     out->sun_shown = h > -SKY_SUN_HALF / SKY_DIST;
     out->moon_shown = -h > -SKY_MOON_HALF / SKY_DIST;
@@ -99,7 +100,6 @@ static void quad(MeshVertex out[MESH_FACE_VERTS], const float d[3], float half, 
 
 int sky_quads(const SkyLook *look, MeshVertex out[SKY_QUADS_MAX])
 {
-    static const float white[3] = { 1.0f, 1.0f, 1.0f };
     const float moon[3] = { -look->sun[0], -look->sun[1], -look->sun[2] };
     int n = 0;
 
@@ -108,7 +108,7 @@ int sky_quads(const SkyLook *look, MeshVertex out[SKY_QUADS_MAX])
         n += MESH_FACE_VERTS;
     }
     if (look->moon_shown) {
-        quad(out + n, moon, SKY_MOON_HALF, TILE_MOON, white);
+        quad(out + n, moon, SKY_MOON_HALF, TILE_MOON, look->moon_rgb);
         n += MESH_FACE_VERTS;
     }
     return n;

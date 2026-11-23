@@ -50,6 +50,7 @@ typedef struct {
     uint32_t clear;    /* the sky's colour, 0xRRGGBBAA */
     float light;       /* the world's brightness, SKY_NIGHT_LIGHT .. 1 */
     float sun_rgb[3];  /* the sun's colour: white, orange near the horizon */
+    float moon_rgb[3]; /* the moon's colour: white (rain fades it, weather.h) */
     bool sun_shown;    /* any part of the sun is above the horizon */
     bool moon_shown;
 } SkyLook;
@@ -66,7 +67,7 @@ void sky_look(float t, SkyLook *out);
 /* The sun and moon squares that are shown, round the eye at the origin
  * (draw them with the view's turn but not its position, so they never come
  * nearer): each six vertices, counter-clockwise seen from the eye, the sun
- * with TILE_SUN in its colour, the moon with TILE_MOON in white. Returns
+ * with TILE_SUN in its colour, the moon with TILE_MOON in its own (white). Returns
  * how many vertices were written: 0, 6 or 12 (SKY_QUADS_MAX). */
 int sky_quads(const SkyLook *look, MeshVertex out[SKY_QUADS_MAX]);
 

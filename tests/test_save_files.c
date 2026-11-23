@@ -117,6 +117,7 @@ static void sample_info(SaveInfo *info)
         info->hotbar[k] = (uint8_t)(k % BLOCK_COUNT);
     info->chosen = 8;
     info->daytime = 0.3125f;
+    weather_init(&info->weather, info->seed);
 }
 
 static int info_equal(const SaveInfo *a, const SaveInfo *b)

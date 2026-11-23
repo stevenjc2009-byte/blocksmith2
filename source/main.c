@@ -24,9 +24,10 @@
 #include "skydraw.h"
 #include "start.h"
 #include "walk.h"
+#include "weather.h"
 #include "world.h"
 
-/* Roadmap row 3-02: the endless world, a settings screen, a seed for each
+/* Roadmap row 3-06: the endless world, a settings screen, a seed for each
  * new world, saving, a list of the saved worlds, and day and night. With
  * worlds saved the
  * game starts on the world list (worldlist.h), over the sky blue top
@@ -72,7 +73,9 @@
  * start screens it just quits. A day and night takes 20 minutes (sky.h):
  * the sun rises in the east and sets in the west, the sky glows orange
  * round both, the moon crosses the night sky and the world grows dim; the
- * time of day is saved with the world. The chunk meshes are in meshes.c,
+ * time of day is saved with the world. Every 10 to 25 minutes it rains for
+ * 3 to 6 minutes, snow in cold places, the sky grey and the world darker
+ * (weather.h); the weather is saved too. The chunk meshes are in meshes.c,
  * the start screens' loop in start.c, frame pacing and the crosshair in
  * frame.c, the Circle Pad and look keys read in controls.c, the sky drawn
  * in skydraw.c. */
@@ -89,6 +92,7 @@ static SaveUiMessage s_msg; /* the save message, shown until s_msg_until */
 static u64 s_msg_until;
 static LidSave s_lid; /* the lid closing or HOME saves the game */
 static float s_daytime = SKY_NEW_WORLD; /* the time of day (sky.h) */
+static Weather s_weather; /* rain and snow (weather.h) */
 
 /* The bottom screen: the settings screen while it is open, else grass green
  * with the hotbar along its foot, the SAVE button and the save message
@@ -132,6 +136,7 @@ static bool save_game(const Player *p, const Camera *cam, const Hotbar *hb)
             info.hotbar[k] = (uint8_t)hb->block[k];
         info.chosen = (uint8_t)hb->chosen;
         info.daytime = s_daytime;
+        info.weather = s_weather;
         ok = save_world_write(&s_save, &info) && ok;
     }
     s_kept.view = s_settings.view;
@@ -243,7 +248,9 @@ int main(void)
         camera_turn(&cam, 0.0f, 0.0f); /* keeps them in range */
         hotbar_load(&hotbar, info.hotbar, info.chosen);
         s_daytime = info.daytime;
+        s_weather = info.weather;
     } else {
+        weather_init(&s_weather, s_world.seed);
         player_spawn(&player, &s_world, 0, 0);
         save_game(&player, &cam, &hotbar); /* so the new world can be carried on at once */
     }
@@ -282,6 +289,7 @@ int main(void)
         if (dt > 0.1f)
             dt = 0.1f;
         s_daytime = sky_advance(s_daytime, dt);
+        weather_step(&s_weather, dt);
         hand_step(&s_world, dt);
         if (s_settings.open) {
             /* The settings screen: the player stands still; a touch or the
@@ -347,7 +355,7 @@ int main(void)
         camera_view(&view, &cam);
         mat4_mul(&mvp, &proj, &view);
         gpu_frame_begin();
-        skydraw(s_daytime, &cam, &proj, &mvp, s_settings.view);
+        skydraw(s_daytime, &s_weather, &s_world, &cam, &proj, &mvp, s_settings.view);
         meshes_draw(&mvp);
         hand_draw(&s_world, &cam, &proj, &mvp, hotbar_block(&hotbar));
         gpu_frame_end();

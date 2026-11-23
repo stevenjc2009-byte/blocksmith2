@@ -46,6 +46,9 @@ int main(void)
     test_particles();
     test_held();
     test_light_world();
+    test_weather();
+    test_weather_drops();
+    test_weather_save();
 
     printf("PC tests: %d checks, %d failed\n", g_checks, g_fails);
     if (g_checks == 0) {

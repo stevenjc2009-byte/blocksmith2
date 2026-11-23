@@ -11,16 +11,19 @@
  * no memory for them the sky's colour and the light still change. */
 static MeshVertex *s_quads;
 static MeshVertex *s_clouds; /* CLOUD_VERTS_MAX, the same way (row 3-04) */
+static MeshVertex *s_drops;  /* WEATHER_VERTS_MAX, the same way (row 3-06) */
 
-void skydraw(float t, const Camera *cam, const Mat4 *proj, const Mat4 *mvp, int view)
+void skydraw(float t, const Weather *weather, const World *world, const Camera *cam,
+             const Mat4 *proj, const Mat4 *mvp, int view)
 {
     SkyLook look;
     Camera turn = *cam;
     Mat4 turned, sky;
-    float start, end;
-    int n;
+    float start, end, grey;
+    int n, i;
 
     sky_look(t, &look);
+    weather_sky(&look, weather->strength);
     gpu_set_clear(look.clear);
     gpu_set_fog_color(look.clear);
     if (!s_quads)
@@ -39,6 +42,12 @@ void skydraw(float t, const Camera *cam, const Mat4 *proj, const Mat4 *mvp, int 
     if (s_clouds) {
         n = cloud_build(cam->x, cam->z, t, s_clouds);
         if (n > 0) { /* only the vertices written this frame */
+            grey = 1.0f - WEATHER_CLOUD_GREY * weather->strength;
+            for (i = 0; i < n; i++) {
+                s_clouds[i].r *= grey;
+                s_clouds[i].g *= grey;
+                s_clouds[i].b *= grey;
+            }
             GSPGPU_FlushDataCache(s_clouds, n * sizeof *s_clouds);
             gpu_set_fog(cam->x, cam->z, CLOUD_FOG_START, CLOUD_RADIUS);
             gpu_draw(s_clouds, n, mvp);
@@ -46,6 +55,15 @@ void skydraw(float t, const Camera *cam, const Mat4 *proj, const Mat4 *mvp, int 
     }
     sky_fog(view, &start, &end);
     gpu_set_fog(cam->x, cam->z, start, end);
+    if (!s_drops)
+        s_drops = linearAlloc(WEATHER_VERTS_MAX * sizeof *s_drops);
+    if (s_drops) {
+        n = weather_build(weather, world, cam, s_drops);
+        if (n > 0) {
+            GSPGPU_FlushDataCache(s_drops, n * sizeof *s_drops);
+            gpu_draw(s_drops, n, mvp);
+        }
+    }
 }
 
 void skydraw_exit(void)
@@ -54,5 +72,7 @@ void skydraw_exit(void)
         linearFree(s_quads);
     if (s_clouds)
         linearFree(s_clouds);
-    s_quads = s_clouds = NULL;
+    if (s_drops)
+        linearFree(s_drops);
+    s_quads = s_clouds = s_drops = NULL;
 }

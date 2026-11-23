@@ -13,7 +13,7 @@
  * save_files.c). */
 
 #define VERSION 1u      /* every file but world.dat */
-#define INFO_VERSION 2u /* world.dat, with the time of day (row 3-02) */
+#define INFO_VERSION 3u /* world.dat, with the weather (row 3-06) */
 #define SET_CAP_MAX (1 << 24) /* the chunk set's most places: 8 million saved chunks */
 
 /* --- Packing --- */
@@ -134,6 +134,9 @@ void save_info_pack(const SaveInfo *info, uint8_t out[SAVE_INFO_SIZE])
     memcpy(out + 32, info->hotbar, HOTBAR_SLOTS);
     out[32 + HOTBAR_SLOTS] = info->chosen;
     put_float(out + 33 + HOTBAR_SLOTS, info->daytime);
+    out[37 + HOTBAR_SLOTS] = info->weather.raining ? 1 : 0;
+    put_float(out + 38 + HOTBAR_SLOTS, info->weather.left);
+    put32(out + 42 + HOTBAR_SLOTS, info->weather.rng);
     seal_as(out, SAVE_INFO_SIZE, "BS2W", INFO_VERSION);
 }
 
@@ -143,6 +146,7 @@ bool save_info_unpack(const uint8_t *in, size_t n, SaveInfo *info)
     int k;
 
     if (!(n == SAVE_INFO_SIZE && sealed_as(in, n, "BS2W", INFO_VERSION)) &&
+        !(n == SAVE_INFO_SIZE_V2 && sealed_as(in, n, "BS2W", 2u)) &&
         !(n == SAVE_INFO_SIZE_V1 && sealed_as(in, n, "BS2W", 1u)))
         return false;
     t.seed = get32(in + 8);
@@ -153,7 +157,20 @@ bool save_info_unpack(const uint8_t *in, size_t n, SaveInfo *info)
     t.pitch = get_float(in + 28);
     memcpy(t.hotbar, in + 32, HOTBAR_SLOTS);
     t.chosen = in[32 + HOTBAR_SLOTS];
-    t.daytime = n == SAVE_INFO_SIZE ? get_float(in + 33 + HOTBAR_SLOTS) : SKY_NEW_WORLD;
+    t.daytime = n == SAVE_INFO_SIZE_V1 ? SKY_NEW_WORLD : get_float(in + 33 + HOTBAR_SLOTS);
+    weather_init(&t.weather, t.seed);
+    if (n == SAVE_INFO_SIZE) {
+        if (in[37 + HOTBAR_SLOTS] > 1)
+            return false;
+        t.weather.raining = in[37 + HOTBAR_SLOTS] == 1;
+        t.weather.left = get_float(in + 38 + HOTBAR_SLOTS);
+        t.weather.rng = get32(in + 42 + HOTBAR_SLOTS);
+        t.weather.strength = t.weather.raining ? 1.0f : 0.0f;
+        t.weather.clock = 0.0f;
+        if (!(t.weather.left > 0.0f &&
+              t.weather.left <= (t.weather.raining ? WEATHER_RAIN_MAX : WEATHER_CLEAR_MAX)))
+            return false;
+    }
     if (!isfinite(t.x) || !isfinite(t.y) || !isfinite(t.z) || !isfinite(t.yaw) ||
         !isfinite(t.pitch) || t.chosen >= HOTBAR_SLOTS ||
         !(t.daytime >= 0.0f && t.daytime < 1.0f))

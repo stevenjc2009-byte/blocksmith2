@@ -126,6 +126,7 @@ static void sample_info(SaveInfo *info)
         info->hotbar[k] = (uint8_t)(k % BLOCK_COUNT);
     info->chosen = 8;
     info->daytime = 0.6875f;
+    weather_init(&info->weather, info->seed);
 }
 
 static int info_equal(const SaveInfo *a, const SaveInfo *b)
@@ -163,7 +164,7 @@ static void test_info(void)
     CHECK_EQ_INT(save_info_unpack(bad, sizeof bad, &out), 1);
     /* ...but another version, a chosen slot past the last, a slot with no
      * such block, or a number that is not finite does not. */
-    for (i = 1; i <= 3; i += 2) { /* version 1 at version 2's size, and 3 */
+    for (i = 1; i <= 4; i += i == 2 ? 2 : 1) { /* versions 1, 2 at version 3's size, and 4 */
         memcpy(bad, buf, sizeof bad);
         bad[4] = (uint8_t)i;
         reseal(bad, sizeof bad);

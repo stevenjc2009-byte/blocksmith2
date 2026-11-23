@@ -136,6 +136,7 @@ static void sample_info(SaveInfo *info, uint32_t seed)
         info->hotbar[k] = (uint8_t)(k % BLOCK_COUNT);
     info->chosen = 0;
     info->daytime = 0.5f;
+    weather_init(&info->weather, info->seed);
 }
 
 /* World 1's world.dat with seed seed. */
