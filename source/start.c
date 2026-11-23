@@ -94,64 +94,74 @@ static void note_show(Note *n, bool ok, const char *done, const char *failed)
     n->until = osGetTime() + WORLDLIST_NOTE_MS;
 }
 
-/* A on the delete screen: delete the chosen world. If it is gone from the
- * SD card afterwards it goes from the list too (and is no longer the world
- * played last). */
-static void delete_chosen(WorldList *l, SaveSettings *kept)
-{
-    int id = s_ids[l->sel];
-
-    save_world_delete(SAVE_ROOT, id);
-    if (save_world_exists(SAVE_ROOT, id))
-        return;
-    memmove(&s_ids[l->sel], &s_ids[l->sel + 1], (size_t)(l->count - l->sel - 1) * sizeof s_ids[0]);
-    worldlist_remove(l);
-    if (kept->last == id) {
-        kept->last = 0;
-        save_settings_write(SAVE_ROOT, kept);
-    }
-}
-
-/* A backup or a restore of one world, run on bgjob.h's thread (fix batch,
- * problem 6: it stopped the list for half a second or more). While it
- * runs the list is drawn with a note and keys and touches wait; nothing
- * else here touches the SD card meanwhile. The rows' names are read again
+/* A backup, a restore or a delete of one world, run on bgjob.h's thread
+ * (fix batch, problem 6: a backup stopped the list for half a second or
+ * more; overnight run 4-01: a delete for 6 to 9 frames). While it runs the
+ * list is drawn with a note and keys and touches wait; nothing else here
+ * touches the SD card or s_ids meanwhile. The rows' names are read again
  * on the thread too, once it is done (on the game's thread they took a
  * tenth of a second). */
+typedef enum { JOB_BACKUP, JOB_RESTORE, JOB_DELETE } JobKind;
+
 typedef struct {
     int id;
-    bool restore;
-    WorldList list; /* the list as it started; it cannot move meanwhile */
+    JobKind kind;
+    WorldList list;   /* the list as it started; only a delete changes it */
+    SaveSettings kept; /* a delete: the settings, last played world and all */
     char names[WORLDLIST_ROWS][WORLDNAME_SIZE];
     bool backed[WORLDLIST_ROWS];
 } Copying;
 
 static Copying s_copying;
 
+/* A delete: if the world is gone from the SD card afterwards it goes from
+ * the list too (and is no longer the world played last). */
+static int delete_world(Copying *c)
+{
+    WorldList *l = &c->list;
+
+    save_world_delete(SAVE_ROOT, c->id);
+    if (save_world_exists(SAVE_ROOT, c->id))
+        return 0;
+    memmove(&s_ids[l->sel], &s_ids[l->sel + 1], (size_t)(l->count - l->sel - 1) * sizeof s_ids[0]);
+    worldlist_remove(l);
+    if (c->kept.last == c->id) {
+        c->kept.last = 0;
+        save_settings_write(SAVE_ROOT, &c->kept);
+    }
+    return 1;
+}
+
 static int copy_world(void *arg)
 {
     Copying *c = arg;
-    int ok = c->restore ? save_backup_restore(SAVE_ROOT, c->id) : save_backup_make(SAVE_ROOT, c->id);
+    int ok = c->kind == JOB_DELETE    ? delete_world(c)
+             : c->kind == JOB_RESTORE ? save_backup_restore(SAVE_ROOT, c->id)
+                                      : save_backup_make(SAVE_ROOT, c->id);
 
     read_names(&c->list, c->names, c->backed); /* RESTORE shown, an old name back */
     return ok;
 }
 
-static void copy_start(Note *n, const WorldList *l, bool restore)
+static void copy_start(Note *n, const WorldList *l, const SaveSettings *kept, JobKind kind)
 {
+    static const char *const k_running[] = { "BACKING UP", "RESTORING", "DELETING" };
+
     s_copying.id = s_ids[l->sel];
-    s_copying.restore = restore;
+    s_copying.kind = kind;
     s_copying.list = *l;
+    s_copying.kept = *kept;
     bgjob_start(copy_world, &s_copying);
-    n->text = restore ? "RESTORING" : "BACKING UP";
+    n->text = k_running[kind];
     n->failed = false;
     n->until = UINT64_MAX;
 }
 
-/* The copy has ended: its note, the rows' names and backups as it left
- * them, and true. */
+/* The job has ended: its note (none after a delete, as before it ran on
+ * the thread), the rows' names and backups as it left them, the list and
+ * the world played last after a delete, and true. */
 static bool copy_done(Note *n, char names[WORLDLIST_ROWS][WORLDNAME_SIZE],
-                      bool backed[WORLDLIST_ROWS])
+                      bool backed[WORLDLIST_ROWS], WorldList *l, SaveSettings *kept)
 {
     int ok;
 
@@ -159,10 +169,15 @@ static bool copy_done(Note *n, char names[WORLDLIST_ROWS][WORLDNAME_SIZE],
         return false;
     memcpy(names, s_copying.names, sizeof s_copying.names);
     memcpy(backed, s_copying.backed, sizeof s_copying.backed);
-    if (s_copying.restore)
+    if (s_copying.kind == JOB_DELETE) {
+        *l = s_copying.list;
+        kept->last = s_copying.kept.last;
+        n->text = NULL;
+    } else if (s_copying.kind == JOB_RESTORE) {
         note_show(n, ok, "WORLD RESTORED", "RESTORE FAILED");
-    else
+    } else {
         note_show(n, ok, "BACKUP MADE", "BACKUP FAILED");
+    }
     return true;
 }
 
@@ -194,15 +209,18 @@ StartChoice start_choose_world(uint32_t *seed, SaveSettings *kept, int *world, F
         hidScanInput();
         down = hidKeysDown();
         moved = hidKeysDownRepeat();
-        if (bgjob_started()) { /* a backup or a restore: only START, after it */
-            if (copy_done(&note, names, backed))
+        if (bgjob_started()) { /* a backup, a restore or a delete: only START, after it */
+            if (copy_done(&note, names, backed, &list, kept)) {
                 names_top = list.top; /* read on the thread */
+                if (list.count == 0)
+                    screen = SCREEN_NEW; /* the last world was deleted */
+            }
             down &= KEY_START;
             moved = 0;
         }
         if (down & KEY_START) {
             bgjob_wait();
-            copy_done(&note, names, backed);
+            copy_done(&note, names, backed, &list, kept);
             return START_QUIT;
         }
         if (down & KEY_TOUCH) {
@@ -246,7 +264,7 @@ StartChoice start_choose_world(uint32_t *seed, SaveSettings *kept, int *world, F
                 save_name_read(SAVE_ROOT, s_ids[list.sel], asked);
                 screen = SCREEN_ASK;
             } else if ((down & KEY_R) || b == WORLDLIST_BACKUP) {
-                copy_start(&note, &list, false);
+                copy_start(&note, &list, kept, JOB_BACKUP);
             } else if (((down & KEY_B) || b == WORLDLIST_RESTORE) && list.backed_up) {
                 asking = WORLDLIST_ASKING_RESTORE;
                 save_name_read(SAVE_ROOT, s_ids[list.sel], asked);
@@ -256,11 +274,11 @@ StartChoice start_choose_world(uint32_t *seed, SaveSettings *kept, int *world, F
             WorldListAsk a = worldlist_ask_at(tx, ty);
 
             if (((down & KEY_A) || a == WORLDLIST_ASK_DELETE) && asking == WORLDLIST_ASKING_DELETE) {
-                delete_chosen(&list, kept);
-                names_top = -1;
-                screen = list.count > 0 ? SCREEN_LIST : SCREEN_NEW;
+                copy_start(&note, &list, kept, JOB_DELETE);
+                screen = SCREEN_LIST;
             } else if ((down & KEY_A) || a == WORLDLIST_ASK_DELETE) {
-                copy_start(&note, &list, asking == WORLDLIST_ASKING_RESTORE);
+                copy_start(&note, &list, kept,
+                           asking == WORLDLIST_ASKING_RESTORE ? JOB_RESTORE : JOB_BACKUP);
                 screen = SCREEN_LIST;
             } else if ((down & KEY_B) || a == WORLDLIST_ASK_KEEP) {
                 screen = SCREEN_LIST;
@@ -300,6 +318,6 @@ StartChoice start_choose_world(uint32_t *seed, SaveSettings *kept, int *world, F
         frame_end(fps, paced);
     }
     bgjob_wait(); /* the system closing the game */
-    copy_done(&note, names, backed);
+    copy_done(&note, names, backed, &list, kept);
     return START_QUIT;
 }
