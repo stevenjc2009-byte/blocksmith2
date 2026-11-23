@@ -28,7 +28,7 @@ bool raycast(const World *w, float ox, float oy, float oz,
              float dx, float dy, float dz, float reach, RayHit *hit)
 {
     float len = sqrtf(dx * dx + dy * dy + dz * dz);
-    int x, y, z, sx, sy, sz, face;
+    int x, y, z, sx, sy, sz, face, b;
     float nx, ny, nz, gx, gy, gz, t;
 
     if (!(len > 0.0f))
@@ -65,7 +65,8 @@ bool raycast(const World *w, float ox, float oy, float oz,
         }
         if (t > reach)
             return false;
-        if (world_get(w, x, y, z) != BLOCK_AIR) {
+        b = world_get(w, x, y, z);
+        if (b != BLOCK_AIR && b != BLOCK_WATER) { /* row 4-01: through water */
             hit->x = x;
             hit->y = y;
             hit->z = z;

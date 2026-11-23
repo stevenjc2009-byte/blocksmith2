@@ -42,6 +42,16 @@ static u32 depth_word(bool on)
               : 1 | (GPU_ALWAYS << 4) | (GPU_WRITE_COLOR << 8);
 }
 
+/* The blend register: a plain copy, or (row 4-01) the new colour mixed
+ * over the old by its alpha. The alpha written is the new one either way. */
+static u32 blend_word(bool see_through)
+{
+    return GPU_BLEND_ADD | (GPU_BLEND_ADD << 8) |
+           (see_through ? ((u32)GPU_SRC_ALPHA << 16) | ((u32)GPU_ONE_MINUS_SRC_ALPHA << 20)
+                        : ((u32)GPU_ONE << 16) | ((u32)GPU_ZERO << 20)) |
+           ((u32)GPU_ONE << 24) | ((u32)GPU_ZERO << 28);
+}
+
 void gpu_state_fragment_ops(void)
 {
     u32 t[4];
@@ -63,10 +73,7 @@ void gpu_state_fragment_ops(void)
     GPUCMD_AddIncrementalWrites(GPUREG_FRAGOP_ALPHA_TEST, t, 4);
 
     GPUCMD_AddWrite(GPUREG_BLEND_COLOR, 0);
-    GPUCMD_AddWrite(GPUREG_BLEND_FUNC,
-                    GPU_BLEND_ADD | (GPU_BLEND_ADD << 8) |
-                    ((u32)GPU_ONE << 16) | ((u32)GPU_ZERO << 20) |
-                    ((u32)GPU_ONE << 24) | ((u32)GPU_ZERO << 28)); /* plain copy */
+    GPUCMD_AddWrite(GPUREG_BLEND_FUNC, blend_word(false)); /* plain copy */
     GPUCMD_AddWrite(GPUREG_LOGIC_OP, GPU_LOGICOP_COPY);
     GPUCMD_AddMaskedWrite(GPUREG_COLOR_OPERATION, 0x7, 0x00E40100); /* normal mode, blending */
     GPUCMD_AddWrite(GPUREG_FRAGOP_SHADOW, 0);
@@ -94,7 +101,8 @@ void gpu_state_texture(const void *tex, int w, int h)
 
 void gpu_state_texenv(void)
 {
-    /* Stage 0: texture 0 times the vertex colour, for colour and alpha.
+    /* Stage 0: texture 0 times the vertex colour; alpha the texture's
+     * (row 4-01: how much of the water shows, gpu_state_see_through()).
      * Stage 1 (row 3-04): the fog. The vertex colour's alpha is how much of
      * the colour is kept (vshader.v.pica): stage 0's colour times that alpha
      * plus the constant colour, the fog's (gpu_state_fog_color()), times one
@@ -104,7 +112,7 @@ void gpu_state_texenv(void)
         GPU_TEVSOURCES(GPU_TEXTURE0, GPU_PRIMARY_COLOR, GPU_PRIMARY_COLOR) |
             (GPU_TEVSOURCES(GPU_TEXTURE0, GPU_PRIMARY_COLOR, GPU_PRIMARY_COLOR) << 16),
         0,
-        GPU_MODULATE | (GPU_MODULATE << 16),
+        GPU_MODULATE | (GPU_REPLACE << 16),
         0,
         0,
     };
@@ -180,6 +188,13 @@ void gpu_state_uniform_vec4(int reg, float x, float y, float z, float w)
 void gpu_state_depth_write(bool on)
 {
     GPUCMD_AddWrite(GPUREG_DEPTH_COLOR_MASK, depth_word(on));
+}
+
+void gpu_state_see_through(bool on)
+{
+    GPUCMD_AddWrite(GPUREG_BLEND_FUNC, blend_word(on));
+    GPUCMD_AddWrite(GPUREG_DEPTH_COLOR_MASK,
+                    on ? 1 | (GPU_GREATER << 4) | (GPU_WRITE_COLOR << 8) : depth_word(true));
 }
 
 void gpu_state_draw_triangles(int count)

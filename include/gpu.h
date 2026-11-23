@@ -35,6 +35,13 @@ void gpu_draw_sky(const MeshVertex *verts, int count, const Mat4 *mvp);
  * cover each other, as it is a box and back faces are culled). */
 void gpu_draw_front(const MeshVertex *verts, int count, const Mat4 *mvp);
 
+/* See-through drawing (row 4-01: water) for the draws after it, on or off.
+ * On: each pixel is mixed over what is there by its texture's alpha
+ * (BLOCKTEX_WATER_ALPHA for water), depth tested but no depth written, so
+ * what is behind still shows and is never hidden. Off: solid drawing
+ * again. Leave it off at the end of a frame. */
+void gpu_see_through(bool on);
+
 /* The colour gpu_frame_end() clears to, 0xRRGGBBAA: sky blue until it is
  * changed (the start screens), the sky's colour of the moment in the game
  * (skydraw.h). */

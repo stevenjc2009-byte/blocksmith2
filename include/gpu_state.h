@@ -29,7 +29,7 @@ void gpu_state_texture(const void *tex, int w, int h);
 
 /* Colour = texture colour times vertex colour, then fogged (row 3-04):
  * mixed towards the fog's colour as the vertex colour's alpha drops from 1
- * (none) to 0 (all fog). */
+ * (none) to 0 (all fog). Alpha = the texture's (row 4-01). */
 void gpu_state_texenv(void);
 
 /* The fog's colour (row 3-04), 0xAABBGGRR as the combiner holds it. */
@@ -49,6 +49,11 @@ void gpu_state_uniform_vec4(int reg, float x, float y, float z, float w);
 /* The depth test and depth writes on (the world: nearer wins), or both off
  * (the sky: drawn first, behind everything). */
 void gpu_state_depth_write(bool on);
+
+/* Blending by the new colour's alpha, the depth test on and depth writes
+ * off (row 4-01: water, drawn after the solid world), or back to the plain
+ * copy and the depth test and writes on (as gpu_state_fragment_ops()). */
+void gpu_state_see_through(bool on);
 
 /* Draw `count` vertices as separate triangles. */
 void gpu_state_draw_triangles(int count);

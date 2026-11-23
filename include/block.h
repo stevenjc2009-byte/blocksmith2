@@ -11,6 +11,8 @@ enum {
     BLOCK_DIRT,
     BLOCK_STONE,
     BLOCK_TORCH, /* row 3-03: a small stick that lights the cells round it (light.h) */
+    BLOCK_SAND,  /* row 4-01: beaches, river beds and the sea floor */
+    BLOCK_WATER, /* row 4-01: still water in seas and rivers; not solid, see-through */
     BLOCK_COUNT
 };
 
@@ -30,8 +32,8 @@ enum {
 int block_face_tile(int block, int face);
 
 /* Is the block a solid cube: something the player cannot walk through, that
- * hides the faces of the blocks beside it and stops light? Grass, dirt and
- * stone are; air and a torch (and anything not a block) are not. */
+ * hides the faces of the blocks beside it and stops light? Grass, dirt,
+ * stone and sand are; air, a torch, water (and anything not a block) are not. */
 bool block_solid(int block);
 
 #endif

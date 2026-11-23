@@ -128,8 +128,9 @@ static bool slow_walk(double ox, double oy, double oz, double dx, double dy, dou
 
     for (t = t0; t <= t1; t += 0.0005) {
         int x = cell(ox + dx * t), y = cell(oy + dy * t), z = cell(oz + dz * t);
+        int b = world_get(&s_w, x, y, z);
 
-        if ((x != sx || y != sy || z != sz) && world_get(&s_w, x, y, z) != BLOCK_AIR)
+        if ((x != sx || y != sy || z != sz) && b != BLOCK_AIR && b != BLOCK_WATER) /* through water */
             return true;
     }
     return false;
@@ -156,7 +157,7 @@ static void test_random(void)
 {
     int n, hits = 0, misses = 0, bad_hit = 0, bad_early = 0, bad_miss = 0, flats = 0;
 
-    test_world_small(&s_w, 2026u);
+    test_world_small(&s_w, test_land_seed()); /* hills, not seed 2026's sea (row 4-01) */
     for (n = 0; n < 3000; n++) {
         float ox = -30.0f + 60.0f * rnd(), oy = 58.0f + 16.0f * rnd(), oz = -30.0f + 60.0f * rnd();
         float dx = rnd() * 2.0f - 1.0f, dy = rnd() * 2.0f - 1.0f, dz = rnd() * 2.0f - 1.0f;
@@ -182,7 +183,8 @@ static void test_random(void)
             hits++;
             /* The block is solid, the ray meets it on the named face, and
              * nothing solid comes before. */
-            if (world_get(&s_w, h.x, h.y, h.z) == BLOCK_AIR || h.dist < 0.0f || h.dist > RAY_REACH ||
+            if (world_get(&s_w, h.x, h.y, h.z) == BLOCK_AIR || world_get(&s_w, h.x, h.y, h.z) == BLOCK_WATER ||
+                h.dist < 0.0f || h.dist > RAY_REACH ||
                 !on_face(ox + dx * h.dist, oy + dy * h.dist, oz + dz * h.dist, h.x, h.y, h.z, h.face, 1e-3f))
                 bad_hit++;
             if (slow_walk(ox, oy, oz, dx, dy, dz, 0.0f, h.dist - 0.002f))

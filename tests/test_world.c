@@ -28,6 +28,30 @@ void test_world_small(World *w, uint32_t seed)
             world_load(w, cx, cz);
 }
 
+uint32_t test_land_seed(void)
+{
+    static uint32_t s_land;
+    static bool s_found;
+    uint32_t seed;
+    int x, z;
+
+    for (seed = 2026u; !s_found; seed++) {
+        bool dry = true;
+
+        for (z = LO; z < HI && dry; z++)
+            for (x = LO; x < HI && dry; x++) {
+                TerrainKind k = terrain_column(seed, x, z).kind;
+
+                dry = k == TERRAIN_PLAINS || k == TERRAIN_HILLS;
+            }
+        if (dry) {
+            s_land = seed;
+            s_found = true;
+        }
+    }
+    return s_land;
+}
+
 void test_world_cleared(World *w)
 {
     int cx, cz;
@@ -133,11 +157,14 @@ static void test_generate(uint32_t seed)
     CHECK_EQ_INT((int)(s_w.seed == seed), 1);
     for (z = LO; z < HI; z++)
         for (x = LO; x < HI; x++) {
-            int h = terrain_height(seed, x, z);
+            TerrainColumn col = terrain_column(seed, x, z);
+            int h = col.height;
 
-            wrong += world_get(&s_w, x, h, z) != BLOCK_GRASS;
-            wrong += world_get(&s_w, x, h + 1, z) != BLOCK_AIR;
-            wrong += world_get(&s_w, x, h - 1, z) != BLOCK_DIRT;
+            /* The column's own top block, water over it up to the sea, dirt
+             * under grass (sand under sand, stone under stone). */
+            wrong += world_get(&s_w, x, h, z) != col.surface;
+            wrong += world_get(&s_w, x, h + 1, z) != (h < TERRAIN_SEA ? BLOCK_WATER : BLOCK_AIR);
+            wrong += world_get(&s_w, x, h - 1, z) != (col.surface == BLOCK_GRASS ? BLOCK_DIRT : col.surface);
             wrong += world_get(&s_w, x, 0, z) != BLOCK_STONE;
         }
     CHECK_EQ_INT(wrong, 0);
@@ -248,7 +275,7 @@ static int ref_solid(int x, int y, int z)
         return 1;
     if (y >= WORLD_HEIGHT)
         return 0;
-    return world_get(&s_w, x, y, z) != BLOCK_AIR;
+    return block_solid(world_get(&s_w, x, y, z));
 }
 
 static int world_solid(void *ctx, int x, int y, int z)
@@ -273,7 +300,7 @@ static int ref_build(int cx, int cz, MeshVertex *out)
                 int wx = cx * CHUNK_SIZE + x, wz = cz * CHUNK_SIZE + z;
                 int b = world_get(&s_w, wx, y, wz);
 
-                if (b == BLOCK_AIR)
+                if (b == BLOCK_AIR || b == BLOCK_WATER) /* water has its own mesh (water_mesh.h) */
                     continue;
                 for (f = 0; f < FACE_COUNT; f++)
                     if (!ref_solid(wx + k_step[f][0], y + k_step[f][1], wz + k_step[f][2])) {
@@ -291,6 +318,18 @@ static int ref_build(int cx, int cz, MeshVertex *out)
 static int min_int(int a, int b)
 {
     return a < b ? a : b;
+}
+
+/* The faces a chunk draws at an inside seam without its neighbour but not
+ * with it, for the column pair (x0, z0) and (x1, z1) on either side: on both
+ * sides one per block that has a block across from it, 2 * (lower column +
+ * 1). Water over the lower column is not in these meshes (water_mesh.h),
+ * and ground facing water draws its face either way: water is not solid. */
+static int seam_faces(uint32_t seed, int x0, int z0, int x1, int z1)
+{
+    int a = terrain_height(seed, x0, z0), b = terrain_height(seed, x1, z1);
+
+    return 2 * (min_int(a, b) + 1);
 }
 
 static void test_meshes(uint32_t seed)
@@ -325,14 +364,13 @@ static void test_meshes(uint32_t seed)
         }
     CHECK_EQ_INT(wrong, 0);
     /* Without neighbours each chunk would also draw the faces at every
-     * inside seam: on both sides of a seam, one per block that has a block
-     * across from it, so 2 * (lower column + 1) per column pair. */
+     * inside seam (seam_faces()). */
     for (x = LO + CHUNK_SIZE; x < HI; x += CHUNK_SIZE)
         for (z = LO; z < HI; z++)
-            seam += 2 * (min_int(terrain_height(seed, x - 1, z), terrain_height(seed, x, z)) + 1);
+            seam += seam_faces(seed, x - 1, z, x, z);
     for (z = LO + CHUNK_SIZE; z < HI; z += CHUNK_SIZE)
         for (x = LO; x < HI; x++)
-            seam += 2 * (min_int(terrain_height(seed, x, z - 1), terrain_height(seed, x, z)) + 1);
+            seam += seam_faces(seed, x, z - 1, x, z);
     CHECK_EQ_INT(alone - with_nb, seam);
 }
 

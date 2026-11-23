@@ -8,7 +8,10 @@
 #include "texswizzle.h"
 #include "vshader_shbin.h"
 
-#define CMD_WORDS 0x4000 /* 64 KB command buffer */
+/* 128 KB command buffer: a draw takes 94 words, and at view 5 (row 4-01)
+ * 121 chunks can each have a mesh and a water mesh, 23 000 words with the
+ * sky and the hand; libctru drops what does not fit. */
+#define CMD_WORDS 0x8000
 
 /* The clear colour until gpu_set_clear(), 0xRRGGBBAA: the same sky blue as
  * row 1-01. */
@@ -100,6 +103,11 @@ void gpu_draw_sky(const MeshVertex *verts, int count, const Mat4 *mvp)
 void gpu_draw_front(const MeshVertex *verts, int count, const Mat4 *mvp)
 {
     gpu_draw_sky(verts, count, mvp); /* the same state: no depth test or write */
+}
+
+void gpu_see_through(bool on)
+{
+    gpu_state_see_through(on);
 }
 
 void gpu_set_clear(uint32_t rgba)

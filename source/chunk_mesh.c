@@ -159,10 +159,11 @@ bool chunk_face_visible(const Chunk *c, const Chunk *const nb[NB_COUNT],
 }
 
 _Static_assert(BLOCK_AIR == 0, "solid_top() compares layers against zero bytes");
-_Static_assert(BLOCK_COUNT == 5, "first_air_layer() knows air and the torch are the blocks that are not solid");
+_Static_assert(BLOCK_COUNT == 7, "first_air_layer() knows air, the torch and water are the blocks that are not solid");
 
-/* The first layer, from the bottom, with anything not solid in it (air or a
- * torch; WORLD_HEIGHT if none; 0 for a missing chunk, which is all air). */
+/* The first layer, from the bottom, with anything not solid in it (air, a
+ * torch or water; WORLD_HEIGHT if none; 0 for a missing chunk, which is all
+ * air). */
 static int first_air_layer(const Chunk *c)
 {
     int y;
@@ -171,7 +172,8 @@ static int first_air_layer(const Chunk *c)
         return 0;
     for (y = 0; y < WORLD_HEIGHT; y++)
         if (memchr(c->blocks[y], BLOCK_AIR, sizeof c->blocks[y]) != NULL ||
-            memchr(c->blocks[y], BLOCK_TORCH, sizeof c->blocks[y]) != NULL)
+            memchr(c->blocks[y], BLOCK_TORCH, sizeof c->blocks[y]) != NULL ||
+            memchr(c->blocks[y], BLOCK_WATER, sizeof c->blocks[y]) != NULL)
             break;
     return y;
 }
@@ -222,7 +224,7 @@ int chunk_mesh_count(const Chunk *c, const Chunk *const nb[NB_COUNT])
                 const uint8_t *p = &s_pad[y + 1][z + 1][x + 1];
                 int b = c->blocks[y][z][x];
 
-                if (b == BLOCK_AIR)
+                if (b == BLOCK_AIR || b == BLOCK_WATER) /* water: water_mesh.h */
                     continue;
                 if (b == BLOCK_TORCH) {
                     n += MESH_TORCH_FACES;
@@ -252,7 +254,7 @@ int chunk_mesh_build(const Chunk *c, const Chunk *const nb[NB_COUNT], float ox, 
                 const uint8_t *p = &s_pad[y + 1][z + 1][x + 1];
                 int b = c->blocks[y][z][x];
 
-                if (b == BLOCK_AIR)
+                if (b == BLOCK_AIR || b == BLOCK_WATER) /* water: water_mesh.h */
                     continue;
                 if (b == BLOCK_TORCH) {
                     if (n + MESH_TORCH_VERTS > max_verts)

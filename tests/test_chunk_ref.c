@@ -63,7 +63,8 @@ static int ref_solid(const Chunk *c, const Chunk *const nb[NB_COUNT], int x, int
     if (o == NULL)
         return 0;
     x = chunk_get(o, x, y, z);
-    return x == BLOCK_GRASS || x == BLOCK_DIRT || x == BLOCK_STONE; /* not air or a torch */
+    return x == BLOCK_GRASS || x == BLOCK_DIRT || x == BLOCK_STONE ||
+           x == BLOCK_SAND; /* not air, a torch or water */
 }
 
 typedef struct {
@@ -154,7 +155,7 @@ static int ref_mesh(const Chunk *const nb[NB_COUNT], float ox, float oz, MeshVer
             for (x = 0; x < CHUNK_SIZE; x++) {
                 int b = chunk_get(&s_c, x, y, z);
 
-                if (b == BLOCK_AIR)
+                if (b == BLOCK_AIR || b == BLOCK_WATER) /* water: its own mesh (row 4-01) */
                     continue;
                 if (b == BLOCK_TORCH) { /* the stick, whatever is round it */
                     if (out)
@@ -318,11 +319,12 @@ static void test_torches_in_ground(void)
     static const int k_at[NB_COUNT][2] = { { 1, 0 }, { -1, 0 }, { 0, 1 }, { 0, -1 },
                                            { 1, 1 }, { -1, 1 }, { 1, -1 }, { -1, -1 } };
     const Chunk *nb[NB_COUNT] = ALL_NB;
+    uint32_t seed = test_land_seed();
     int i, base, low = WORLD_HEIGHT, x, z;
 
-    terrain_fill_chunk(&s_c, 2026u, 0, 0);
+    terrain_fill_chunk(&s_c, seed, 0, 0);
     for (i = 0; i < NB_COUNT; i++)
-        terrain_fill_chunk(&s_nb[i], 2026u, k_at[i][0], k_at[i][1]);
+        terrain_fill_chunk(&s_nb[i], seed, k_at[i][0], k_at[i][1]);
     for (z = 0; z < CHUNK_SIZE; z++)
         for (x = 0; x < CHUNK_SIZE; x++)
             if (top_of(&s_c, x, z) < low)

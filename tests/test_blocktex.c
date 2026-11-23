@@ -24,6 +24,20 @@ static int is_green(uint32_t c) { return green(c) > red(c) && green(c) > blue(c)
 static int is_brown(uint32_t c) { return red(c) > green(c) && green(c) > blue(c); }
 static int is_white(uint32_t c) { return c == 0xFFFFFFFFu; }
 
+/* Row 4-01: pale yellow sand; water mostly blue, see-through. */
+static int is_sand(uint32_t c) { return red(c) >= green(c) && green(c) > blue(c) && red(c) > 180; }
+static int is_water(uint32_t c)
+{
+    return blue(c) > green(c) && green(c) > red(c) && (c & 0xFF) == BLOCKTEX_WATER_ALPHA;
+}
+
+/* Which tile a texel of the picture is in. */
+static int tile_of(int i)
+{
+    return (i / BLOCKTEX_SIZE / BLOCKTEX_TILE) * BLOCKTEX_PER_ROW +
+           (i % BLOCKTEX_SIZE) / BLOCKTEX_TILE;
+}
+
 static int is_grey(uint32_t c)
 {
     return abs(red(c) - green(c)) <= 8 && abs(green(c) - blue(c)) <= 8 &&
@@ -127,15 +141,20 @@ void test_blocktex(void)
     CHECK_EQ_INT(memcmp(s_atlas, again, sizeof again), 0); /* same every time */
 
     for (i = 0; i < BLOCKTEX_SIZE * BLOCKTEX_SIZE; i++)
-        if ((s_atlas[i] & 0xFF) != 0xFF)
-            bad_alpha++;
+        if (tile_of(i) != TILE_WATER && (s_atlas[i] & 0xFF) != 0xFF)
+            bad_alpha++; /* only water lets the world show through */
     CHECK_EQ_INT(bad_alpha, 0);
+    CHECK_EQ_INT(BLOCKTEX_WATER_ALPHA > 0x60 && BLOCKTEX_WATER_ALPHA < 0xE0, 1);
 
     check_tile_all(TILE_GRASS_TOP, is_green, "green");
     check_tile_all(TILE_DIRT, is_brown, "brown");
     check_tile_all(TILE_STONE, is_grey, "grey");
     check_grass_side();
     check_torch();
+    check_tile_all(TILE_SAND, is_sand, "sand"); /* row 4-01 */
+    check_tile_all(TILE_WATER, is_water, "water");
+    CHECK_EQ_INT(TILE_SAND, 8);
+    CHECK_EQ_INT(TILE_WATER, 9);
 
     for (t = 0; t < TILE_COUNT; t++)
         if (t != TILE_CLOUD) /* row 3-04: the clouds are flat white */

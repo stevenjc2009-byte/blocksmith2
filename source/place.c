@@ -36,12 +36,16 @@ bool place_hits_player(const Player *p, int x, int y, int z)
 
 bool place_block(World *w, const Player *p, const RayHit *hit, int b, int *x, int *y, int *z)
 {
+    int here;
+
     place_spot(hit, x, y, z);
-    if (b <= BLOCK_AIR || b >= BLOCK_COUNT)
+    if (b <= BLOCK_AIR || b >= BLOCK_COUNT || b == BLOCK_WATER)
         return false;
     if (*y < 0 || *y >= WORLD_HEIGHT || world_chunk(w, block_to_chunk(*x), block_to_chunk(*z)) == NULL)
         return false;
-    if (world_get(w, *x, *y, *z) != BLOCK_AIR)
+    here = world_get(w, *x, *y, *z);
+    /* Row 4-01: a block takes water's place; a torch does not go under water. */
+    if (here != BLOCK_AIR && (here != BLOCK_WATER || b == BLOCK_TORCH))
         return false;
     /* A torch stands on a solid block and does not get in the way, so it
      * may go where the player is (row 3-03). */

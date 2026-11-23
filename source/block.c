@@ -19,6 +19,10 @@ int block_face_tile(int block, int face)
         return TILE_STONE;
     case BLOCK_TORCH:
         return TILE_TORCH;
+    case BLOCK_SAND:
+        return TILE_SAND;
+    case BLOCK_WATER: /* its own mesh (water_mesh.h) */
+        return TILE_WATER;
     default:
         return -1; /* air, or not a block */
     }
@@ -26,5 +30,6 @@ int block_face_tile(int block, int face)
 
 bool block_solid(int block)
 {
-    return block == BLOCK_GRASS || block == BLOCK_DIRT || block == BLOCK_STONE;
+    return block == BLOCK_GRASS || block == BLOCK_DIRT || block == BLOCK_STONE ||
+           block == BLOCK_SAND;
 }

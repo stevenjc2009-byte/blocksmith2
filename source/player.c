@@ -104,6 +104,45 @@ static bool move_z(Player *p, const World *w, float d)
     return true;
 }
 
+static bool is_water(const World *w, int x, int y, int z)
+{
+    return y >= 0 && y < WORLD_HEIGHT && world_get(w, x, y, z) == BLOCK_WATER;
+}
+
+bool player_in_water(const World *w, const Player *p, float *surface)
+{
+    int x = down(p->x), z = down(p->z), y = down(p->y + EPS);
+
+    if (!is_water(w, x, y, z))
+        return false;
+    while (is_water(w, x, y + 1, z))
+        y++;
+    if (surface != NULL)
+        *surface = (float)(y + 1);
+    return true;
+}
+
+/* In water the up speed eases toward a pull to the float height (slow and
+ * capped, so it neither jerks nor bobs), and gravity is not used. A fast
+ * climb (the kick) is left alone, falling under gravity as on land. */
+static void swim_speed(Player *p, float surface, float dt)
+{
+    float want = (surface - PLAYER_SWIM_LINE - p->y) * PLAYER_SWIM_PULL;
+    float k = PLAYER_SWIM_EASE * dt;
+
+    if (p->vy > PLAYER_SWIM_MAX) {
+        p->vy -= PLAYER_GRAVITY * dt;
+        return;
+    }
+    if (want > PLAYER_SWIM_MAX)
+        want = PLAYER_SWIM_MAX;
+    if (want < -PLAYER_SWIM_MAX)
+        want = -PLAYER_SWIM_MAX;
+    if (k > 1.0f)
+        k = 1.0f;
+    p->vy += (want - p->vy) * k;
+}
+
 static float bigger(float a, float b)
 {
     return a > b ? a : b;
@@ -113,9 +152,17 @@ void player_step(Player *p, const World *w, float vx, float vz, float dt)
 {
     float dx = vx * dt, dz = vz * dt, dy;
     bool hit_x = false, hit_z = false;
+    float surface = 0.0f;
+    bool wet = player_in_water(w, p, &surface);
     int n, i;
 
-    p->vy -= PLAYER_GRAVITY * dt;
+    if (wet) {
+        dx *= PLAYER_SWIM_SCALE;
+        dz *= PLAYER_SWIM_SCALE;
+        swim_speed(p, surface, dt);
+    } else {
+        p->vy -= PLAYER_GRAVITY * dt;
+    }
     if (p->vy < -PLAYER_FALL_MAX)
         p->vy = -PLAYER_FALL_MAX;
     dy = p->vy * dt;
@@ -127,9 +174,18 @@ void player_step(Player *p, const World *w, float vx, float vz, float dt)
         hit_z |= move_z(p, w, dz / n);
     }
 
+    /* Swimming into a bank one block above the water: kick up and out. A
+     * higher wall leaves no room at that height, so it stops the swimmer. */
+    if (wet && (hit_x || hit_z) && p->vy <= PLAYER_SWIM_MAX &&
+        player_fits(w, p->x, surface + 1.0f, p->z) &&
+        player_fits(w, p->x + (hit_x ? dx : 0.0f), surface + 1.0f, p->z + (hit_z ? dz : 0.0f))) {
+        p->vy = PLAYER_SWIM_KICK;
+        return;
+    }
+
     /* Walked into something while standing: if it is one block high (the
      * spot ahead fits one block up) and there is room to rise here, hop. */
-    if (p->on_ground && (hit_x || hit_z) &&
+    if (!wet && p->on_ground && (hit_x || hit_z) &&
         player_fits(w, p->x, p->y + 1.0f, p->z) &&
         player_fits(w, p->x + (hit_x ? dx : 0.0f), p->y + 1.0f, p->z + (hit_z ? dz : 0.0f)))
         p->vy = PLAYER_HOP_SPEED;

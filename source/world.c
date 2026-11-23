@@ -129,7 +129,9 @@ void world_set(World *w, int x, int y, int z, int block)
 
 bool world_break(World *w, int x, int y, int z)
 {
-    if (y <= 0 || world_get(w, x, y, z) == BLOCK_AIR)
+    int b = world_get(w, x, y, z);
+
+    if (y <= 0 || b == BLOCK_AIR || b == BLOCK_WATER)
         return false;
     world_set(w, x, y, z, BLOCK_AIR);
     if (world_get(w, x, y + 1, z) == BLOCK_TORCH)

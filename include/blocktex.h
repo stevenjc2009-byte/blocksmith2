@@ -3,8 +3,8 @@
 
 #include <stdint.h>
 
-/* The block textures, the sun and moon (row 3-02) and the clouds' white
- * (row 3-04), drawn in code
+/* The block textures, the sun and moon (row 3-02), the clouds' white
+ * (row 3-04) and sand and water (row 4-01), drawn in code
  * (kickoff F-4): one 64 x 64 picture holding a 4 x 4 grid of 16 x 16
  * tiles. Tile i sits in column i % 4 and row i / 4, counting rows from the
  * top. */
@@ -26,8 +26,14 @@ enum {
     TILE_TORCH, /* row 3-03: the torch's stick and flame in columns 7 and 8, rows 6 to
                    15 (TORCH_* in mesh.h); the rest is the hotbar's empty-slot grey */
     TILE_CLOUD, /* row 3-04: plain white, for the clouds (cloud.h) */
+    TILE_SAND,  /* row 4-01: pale sand with darker grains */
+    TILE_WATER, /* row 4-01: blue with soft ripples, every texel BLOCKTEX_WATER_ALPHA */
     TILE_COUNT
 };
+
+/* How solid the water tile is (0xFF would hide what is behind it). Every
+ * other tile is wholly solid. */
+#define BLOCKTEX_WATER_ALPHA 0xB0
 
 /* Where the torch's stick is in its tile, in texels from the tile's top
  * left (x1 and y1 one past the end): columns 7 and 8, rows 6 to 15, the

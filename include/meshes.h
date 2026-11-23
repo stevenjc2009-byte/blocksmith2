@@ -7,7 +7,8 @@
 #include "world.h"
 
 /* The world's chunk meshes, in linear memory for the GPU: one per world
- * slot, for the chunk in that slot (world.h). Built and freed between frames
+ * slot, for the chunk in that slot (world.h), and its water's (row 4-01,
+ * water_mesh.h), built and freed with it. Built and freed between frames
  * only: gpu_frame_end() has waited for the GPU, so an old mesh is no longer
  * being read. 3DS calls, so not in the PC tests. */
 
@@ -30,6 +31,12 @@ bool meshes_rebuild_around(const World *w, int x, int y, int z);
 
 /* Every mesh, drawn with mvp (between gpu_frame_begin() and gpu_frame_end()). */
 void meshes_draw(const Mat4 *mvp);
+
+/* Every chunk's water, drawn with mvp see-through (gpu_see_through()): one
+ * draw for each chunk that has any, after everything in the world it may
+ * show (the chunks, the clouds, the rain and the bits), before the held
+ * block. Leaves see-through off. */
+void meshes_draw_water(const Mat4 *mvp);
 
 /* Free every mesh. */
 void meshes_free(void);

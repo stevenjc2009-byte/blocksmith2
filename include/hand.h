@@ -35,10 +35,15 @@ bool hand_place(World *w, const Camera *cam, const Player *player, int b);
 /* Move the swing and the bits on by dt seconds. */
 void hand_step(const World *w, float dt);
 
-/* Draw the bits (in the world: mvp, after the chunks, with the world's fog)
- * and then block `held` (BLOCK_*; air: nothing) in the bottom right, over
- * everything (proj, no fog). After meshes_draw(); leaves the fog off. */
-void hand_draw(const World *w, const Camera *cam, const Mat4 *proj, const Mat4 *mvp, int held);
+/* Draw the bits, in the world (mvp, with the world's fog). After
+ * meshes_draw() and before meshes_draw_water() (row 4-01), so bits behind
+ * the water show through it. */
+void hand_draw_bits(const Camera *cam, const Mat4 *mvp);
+
+/* Draw block `held` (BLOCK_*; air: nothing) in the bottom right, over
+ * everything (proj, no fog). Last of the world's draws, after the water;
+ * leaves the fog off. */
+void hand_draw_held(const World *w, const Camera *cam, const Mat4 *proj, int held);
 
 /* Free the bits' and the held block's vertex memory. */
 void hand_exit(void);

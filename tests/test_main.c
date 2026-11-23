@@ -50,6 +50,8 @@ int main(void)
     test_weather_drops();
     test_weather_save();
     test_save_job();
+    test_water();
+    test_water_ref();
 
     printf("PC tests: %d checks, %d failed\n", g_checks, g_fails);
     if (g_checks == 0) {

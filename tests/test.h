@@ -43,6 +43,12 @@ extern int g_fails;
 #define SMALL_CHUNKS 4
 void test_world_small(World *w, uint32_t seed);
 
+/* The first seed from 2026 up whose small world is all dry grass land
+ * (plains or hills, terrain_column()): for tests about walking on, digging
+ * and lighting real ground, which a sea or a river would get in the way of.
+ * Found once, then kept (test_world.c). */
+uint32_t test_land_seed(void);
+
 /* The small test world with every block air (test_world.c). */
 void test_world_cleared(World *w);
 
@@ -96,6 +102,8 @@ void test_weather(void);
 void test_weather_drops(void);
 void test_weather_save(void);
 void test_save_job(void);
+void test_water(void);
+void test_water_ref(void);
 
 /* Row 3-03's reference torch light (test_light.c): fills a table for chunk
  * c and its neighbours (nb as chunk_mesh.h, NULL entries air) from the rule

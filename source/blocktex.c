@@ -145,6 +145,34 @@ static uint32_t cloud_texel(int x, int y)
     return rgb(255, 255, 255);
 }
 
+/* Sand (row 4-01): pale yellow, with darker grains and the odd bright
+ * one. */
+static uint32_t sand_texel(int x, int y)
+{
+    uint32_t h = hash3((uint32_t)x, (uint32_t)y, 9);
+    int d = wobble(h, 7);
+
+    if ((h >> 12) % 8 == 0)
+        return rgb(192 + d, 176 + d, 128 + d); /* a darker grain */
+    if ((h >> 12) % 11 == 1)
+        return rgb(236 + d, 228 + d, 192 + d); /* a bright one */
+    return rgb(219 + d, 207 + d, 163 + d);
+}
+
+/* Water (row 4-01): blue, with soft lighter ripples running across in a
+ * gentle zigzag; the rows and columns repeat every 8, so tiles side by side
+ * join up. Every texel is BLOCKTEX_WATER_ALPHA solid. */
+static uint32_t water_texel(int x, int y)
+{
+    int d = wobble(hash3((uint32_t)x, (uint32_t)y, 10), 5);
+    int zig = (x & 7) < 4 ? 4 - (x & 7) : (x & 7) - 4; /* 4 3 2 1 0 1 2 3 */
+    int phase = (y + zig / 2) & 7;
+    int up = phase == 0 ? 26 : phase == 1 ? 12 : 0;   /* the crest, then its edge */
+
+    return (rgb(46 + d + up * 3 / 4, 98 + d + up, 196 + d + up * 3 / 4) & ~0xFFu) |
+           BLOCKTEX_WATER_ALPHA;
+}
+
 /* A loud check for tiles nothing uses yet. */
 static uint32_t missing_texel(int x, int y)
 {
@@ -162,6 +190,8 @@ static uint32_t tile_texel(int tile, int x, int y)
     case TILE_MOON:       return moon_texel(x, y);
     case TILE_TORCH:      return torch_texel(x, y);
     case TILE_CLOUD:      return cloud_texel(x, y);
+    case TILE_SAND:       return sand_texel(x, y);
+    case TILE_WATER:      return water_texel(x, y);
     default:              return missing_texel(x, y);
     }
 }

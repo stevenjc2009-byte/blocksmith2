@@ -17,22 +17,34 @@ void hotbar_init(Hotbar *hb)
     hb->block[1] = BLOCK_DIRT;
     hb->block[2] = BLOCK_STONE;
     hb->block[3] = BLOCK_TORCH;
+    hb->block[4] = BLOCK_SAND; /* row 4-01 */
     hb->chosen = 0;
 }
 
-void hotbar_load(Hotbar *hb, const uint8_t blocks[HOTBAR_SLOTS], int chosen)
+/* Put block b in the first empty slot, unless a slot holds it already or
+ * none is empty. */
+static void add_if_missing(Hotbar *hb, int b)
 {
     int i, empty = -1;
 
     for (i = 0; i < HOTBAR_SLOTS; i++) {
-        hb->block[i] = blocks[i];
-        if (blocks[i] == BLOCK_TORCH)
-            empty = HOTBAR_SLOTS; /* has one: none to add */
-        else if (blocks[i] == BLOCK_AIR && empty < 0)
+        if (hb->block[i] == b)
+            return;
+        if (hb->block[i] == BLOCK_AIR && empty < 0)
             empty = i;
     }
-    if (empty >= 0 && empty < HOTBAR_SLOTS)
-        hb->block[empty] = BLOCK_TORCH;
+    if (empty >= 0)
+        hb->block[empty] = b;
+}
+
+void hotbar_load(Hotbar *hb, const uint8_t blocks[HOTBAR_SLOTS], int chosen)
+{
+    int i;
+
+    for (i = 0; i < HOTBAR_SLOTS; i++) /* water cannot be held (row 4-01) */
+        hb->block[i] = blocks[i] == BLOCK_WATER ? BLOCK_AIR : blocks[i];
+    add_if_missing(hb, BLOCK_TORCH); /* worlds from before row 3-03 */
+    add_if_missing(hb, BLOCK_SAND);  /* and before row 4-01 */
     hb->chosen = chosen;
 }
 

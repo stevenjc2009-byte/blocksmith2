@@ -104,16 +104,13 @@ static float eye_light(const World *w, const Camera *cam)
     return s_lit;
 }
 
-void hand_draw(const World *w, const Camera *cam, const Mat4 *proj, const Mat4 *mvp, int held)
+void hand_draw_bits(const Camera *cam, const Mat4 *mvp)
 {
-    Mat4 place, m;
     int n;
 
     start();
     if (!s_bit_verts)
         s_bit_verts = linearAlloc(PARTICLES_VERTS_MAX * sizeof *s_bit_verts);
-    if (!s_held_verts)
-        s_held_verts = linearAlloc(MESH_BLOCK_VERTS * sizeof *s_held_verts);
     if (s_bit_verts) {
         n = particles_build(&s_bits, cam, s_bit_verts);
         if (n > 0) { /* only the vertices written this frame */
@@ -121,6 +118,16 @@ void hand_draw(const World *w, const Camera *cam, const Mat4 *proj, const Mat4 *
             gpu_draw(s_bit_verts, n, mvp);
         }
     }
+}
+
+void hand_draw_held(const World *w, const Camera *cam, const Mat4 *proj, int held)
+{
+    Mat4 place, m;
+    int n;
+
+    start();
+    if (!s_held_verts)
+        s_held_verts = linearAlloc(MESH_BLOCK_VERTS * sizeof *s_held_verts);
     if (s_held_verts) {
         n = held_build(held, eye_light(w, cam), s_held_verts);
         if (n > 0) {

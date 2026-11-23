@@ -24,6 +24,7 @@
 #include "sky.h"
 #include "skydraw.h"
 #include "start.h"
+#include "terrain.h"
 #include "walk.h"
 #include "weather.h"
 #include "world.h"
@@ -179,7 +180,7 @@ int main(void)
     u32 stale;
     StartChoice start;
     bool cont = false, ok, wanted = false; /* wanted: SAVE or the autosave, to start */
-    int world = 0, pcx = 0, pcz = 0;
+    int world = 0, pcx = 0, pcz = 0, sx = 0, sz = 0;
 
     gfxInitDefault();
     blocktex_build(s_atlas);
@@ -228,6 +229,9 @@ int main(void)
     if (cont) {
         pcx = block_to_chunk((int)floorf(info.x));
         pcz = block_to_chunk((int)floorf(info.z));
+    } else if (terrain_find_spawn(seed, &sx, &sz)) { /* row 4-01: dry land near (0, 0) */
+        pcx = block_to_chunk(sx);
+        pcz = block_to_chunk(sz);
     }
     if (!meshes_stream(&s_world, pcx, pcz, s_settings.view, MESHES_ALL)) {
         meshes_free();
@@ -250,7 +254,7 @@ int main(void)
         s_weather = info.weather;
     } else {
         weather_init(&s_weather, s_world.seed);
-        player_spawn(&player, &s_world, 0, 0);
+        player_spawn(&player, &s_world, sx, sz);
         save_game(&player, &cam, &hotbar, false); /* so the new world can be carried on at once */
     }
     mat4_persp_tilt(&proj, 60.0f * PI / 180.0f, 400.0f / 240.0f, 0.1f, 160.0f);
@@ -360,7 +364,9 @@ int main(void)
         gpu_frame_begin();
         skydraw(s_daytime, &s_weather, &s_world, &cam, &proj, &mvp, s_settings.view);
         meshes_draw(&mvp);
-        hand_draw(&s_world, &cam, &proj, &mvp, hotbar_block(&hotbar));
+        hand_draw_bits(&cam, &mvp);
+        meshes_draw_water(&mvp); /* see-through: after all it may show */
+        hand_draw_held(&s_world, &cam, &proj, hotbar_block(&hotbar));
         gpu_frame_end();
         frame_crosshair();
         frame_end(&fps, &paced);

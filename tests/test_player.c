@@ -313,9 +313,14 @@ static void test_hills(void)
         { 0, -1 }, { 0.7071f, -0.7071f }, { 1, 0 }, { 0.7071f, 0.7071f },
         { 0, 1 }, { -0.7071f, 0.7071f }, { -1, 0 }, { -0.7071f, -0.7071f },
     };
-    int d, inside = 0, far = 0, climbed = 0, low = 0;
+    uint32_t seed = test_land_seed();
+    int d, x, z, inside = 0, far = 0, climbed = 0, low = 0, lowest = WORLD_HEIGHT;
 
-    test_world_small(&s_w, 2026u);
+    test_world_small(&s_w, seed);
+    for (z = SMALL_MIN * CHUNK_SIZE; z < (SMALL_MIN + SMALL_CHUNKS) * CHUNK_SIZE; z++)
+        for (x = SMALL_MIN * CHUNK_SIZE; x < (SMALL_MIN + SMALL_CHUNKS) * CHUNK_SIZE; x++)
+            if (terrain_height(seed, x, z) < lowest)
+                lowest = terrain_height(seed, x, z);
     for (d = 0; d < 8; d++) {
         Player p;
         float x0, z0, y0;
@@ -327,7 +332,7 @@ static void test_hills(void)
         y0 = p.y;
         run(&p, dir[d][0] * 4.3f, dir[d][1] * 4.3f, 6.0f, DT);
         inside += s_inside;
-        low += s_low < TERRAIN_BASE + 1.0f;
+        low += s_low < lowest + 1.0f;
         far += sqrtf((p.x - x0) * (p.x - x0) + (p.z - z0) * (p.z - z0)) > 15.0f;
         climbed += s_top - y0 >= 1.0f;
     }
@@ -336,6 +341,8 @@ static void test_hills(void)
     CHECK_EQ_INT(far >= 6, 1);
     CHECK_EQ_INT(climbed >= 2, 1);
 }
+
+void test_swim(void); /* tests/test_swim.c */
 
 void test_player(void)
 {
@@ -348,4 +355,5 @@ void test_player(void)
     test_ceiling();
     test_edges();
     test_hills();
+    test_swim();
 }

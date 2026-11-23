@@ -182,6 +182,10 @@ void test_mesh(void)
     CHECK_EQ_INT(block_face_tile(BLOCK_GRASS, FACE_NEG_Z), TILE_GRASS_SIDE);
     CHECK_EQ_INT(block_face_tile(BLOCK_DIRT, FACE_POS_Y), TILE_DIRT);
     CHECK_EQ_INT(block_face_tile(BLOCK_STONE, FACE_NEG_X), TILE_STONE);
+    for (f = 0; f < FACE_COUNT; f++) { /* row 4-01: one tile all round */
+        CHECK_EQ_INT(block_face_tile(BLOCK_SAND, f), TILE_SAND);
+        CHECK_EQ_INT(block_face_tile(BLOCK_WATER, f), TILE_WATER);
+    }
     CHECK_EQ_INT(block_face_tile(BLOCK_AIR, FACE_POS_Y), -1);
     CHECK_EQ_INT(block_face_tile(BLOCK_COUNT, FACE_POS_Y), -1);
     CHECK_EQ_INT(block_face_tile(BLOCK_GRASS, FACE_COUNT), -1);

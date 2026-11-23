@@ -18,7 +18,10 @@
  * with, draws the clouds round the eye with `mvp` (the world's), lit by that
  * light, greyed by the rain and fogged out by CLOUD_RADIUS, sets the world's
  * fog for view distance `view` (sky_fog()), then draws the rain or snow
- * falling round the eye in `world`. */
+ * falling round the eye in `world`. With the eye under water (row 4-01,
+ * water_eye_under()) the sky and the fog are water_fog_color() instead,
+ * the fog runs from WATER_FOG_START to WATER_FOG_END, and the sun, moon,
+ * clouds and rain are not drawn. */
 void skydraw(float t, const Weather *weather, const World *world, const Camera *cam,
              const Mat4 *proj, const Mat4 *mvp, int view);
 

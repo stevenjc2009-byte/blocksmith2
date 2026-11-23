@@ -96,8 +96,9 @@ void world_set(World *w, int x, int y, int z, int block);
 
 /* Break the block at (x, y, z): it turns to air, and so does a torch
  * standing on it (row 3-03: a torch needs a solid block under it). False,
- * and nothing changes, for air, for y 0 (the floor of the world stays, so
- * nobody can dig out of it) and for spots outside a loaded chunk. */
+ * and nothing changes, for air, for water (row 4-01), for y 0 (the floor
+ * of the world stays, so nobody can dig out of it) and for spots outside a
+ * loaded chunk. */
 bool world_break(World *w, int x, int y, int z);
 
 /* Most chunks world_touched_chunks() lists. */

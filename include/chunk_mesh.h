@@ -7,10 +7,11 @@
 #include "mesh.h"
 
 /* Triangles for a whole chunk, skipping every face nobody can see: a face
- * is drawn only when the cell next to it is not solid (block_solid(): air or
- * a torch). A torch is drawn as its stick (mesh_torch(), all five faces,
- * whatever is round it), after the faces of the blocks before it in the
- * walk.
+ * is drawn only when the cell next to it is not solid (block_solid(): air,
+ * a torch or water). A torch is drawn as its stick (mesh_torch(), all five
+ * faces, whatever is round it), after the faces of the blocks before it in
+ * the walk. Water has none here: it has its own mesh (water_mesh.h, row
+ * 4-01), drawn after this one.
  *
  * The cell next to a face:
  * - below the world (y < 0) counts as solid, so the bottom layer has no

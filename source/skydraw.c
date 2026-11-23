@@ -5,6 +5,7 @@
 #include "gpu.h"
 #include "sky.h"
 #include "skydraw.h"
+#include "water.h"
 
 /* The sun and moon squares, in linear memory for the GPU. Written each
  * frame before any draw: the last frame's gpu_frame_end() has waited for
@@ -24,15 +25,18 @@ void skydraw(float t, const Weather *weather, const World *world, const Camera *
     Camera turn = *cam;
     Mat4 turned, sky;
     float start, end, grey;
+    bool under = water_eye_under(world, cam->x, cam->y, cam->z); /* row 4-01 */
     int n, i;
 
     sky_look(t, &look);
     weather_sky(&look, weather->strength);
+    if (under)
+        look.clear = water_fog_color(look.light);
     gpu_set_clear(look.clear);
     gpu_set_fog_color(look.clear);
     if (!s_quads)
         s_quads = linearAlloc(SKY_QUADS_MAX * sizeof *s_quads);
-    if (s_quads) {
+    if (s_quads && !under) {
         n = sky_quads(&look, s_quads);
         GSPGPU_FlushDataCache(s_quads, SKY_QUADS_MAX * sizeof *s_quads);
         turn.x = turn.y = turn.z = 0.0f;
@@ -43,7 +47,7 @@ void skydraw(float t, const Weather *weather, const World *world, const Camera *
     gpu_set_light(look.light);
     if (!s_clouds)
         s_clouds = linearAlloc(CLOUD_VERTS_MAX * sizeof *s_clouds);
-    if (s_clouds) {
+    if (s_clouds && !under) {
         /* Built in the pattern, before the drift; the matrix moves them
          * on, and the fog is measured from the eye in the pattern too. */
         float shift = cloud_shift(t), px = cam->x - shift;
@@ -71,10 +75,14 @@ void skydraw(float t, const Weather *weather, const World *world, const Camera *
         }
     }
     sky_fog(view, &start, &end);
+    if (under) {
+        start = WATER_FOG_START;
+        end = WATER_FOG_END;
+    }
     gpu_set_fog(cam->x, cam->z, start, end);
     if (!s_drops)
         s_drops = linearAlloc(WEATHER_VERTS_MAX * sizeof *s_drops);
-    if (s_drops) {
+    if (s_drops && !under) { /* the rain stops at the water: none to see */
         n = weather_build(weather, world, cam, s_drops);
         if (n > 0) {
             GSPGPU_FlushDataCache(s_drops, n * sizeof *s_drops);

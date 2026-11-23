@@ -14,10 +14,11 @@ static World s_w;
 
 static void test_break_rules(void)
 {
+    uint32_t seed = test_land_seed();
     int h;
 
-    test_world_small(&s_w, 2026u);
-    h = terrain_height(2026u, 0, 0);
+    test_world_small(&s_w, seed);
+    h = terrain_height(seed, 0, 0);
     CHECK_EQ_INT(world_break(&s_w, 0, h, 0), 1);            /* the grass on top */
     CHECK_EQ_INT(world_get(&s_w, 0, h, 0), BLOCK_AIR);
     CHECK_EQ_INT(world_get(&s_w, 0, h - 1, 0), BLOCK_DIRT); /* nothing else */
@@ -173,9 +174,10 @@ static void test_rebuild(void)
         { -16, -16 }, { -17, 3 }, { 16, -17 }, { -32, 4 }, { 31, -9 }, { 5, -32 }, { -6, 31 },
         { -32, -32 }, { 31, 31 }, { 7, 7 }, { -9, 22 }, { 3, -20 },
     };
+    uint32_t seed = test_land_seed();
     int s, i, j, d, before = 0, worst = 0;
 
-    test_world_small(&s_w, 2026u);
+    test_world_small(&s_w, seed);
     for (j = 0; j < SMALL_CHUNKS; j++)
         for (i = 0; i < SMALL_CHUNKS; i++)
             s_cache[j][i] = build(i, j);
@@ -183,7 +185,7 @@ static void test_rebuild(void)
 
     for (s = 0; s < (int)(sizeof spots / sizeof spots[0]); s++) {
         int x = spots[s][0], z = spots[s][1];
-        int h = terrain_height(2026u, x, z);
+        int h = terrain_height(seed, x, z);
 
         /* Dig a shaft five deep: grass, three dirt, then stone. */
         for (d = 0; d < 5; d++) {

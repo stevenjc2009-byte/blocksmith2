@@ -48,7 +48,8 @@ static void test_choose(void)
     CHECK_EQ_INT(hb.block[1], BLOCK_DIRT);
     CHECK_EQ_INT(hb.block[2], BLOCK_STONE);
     CHECK_EQ_INT(hb.block[3], BLOCK_TORCH); /* row 3-03 */
-    CHECK_EQ_INT(hb.block[4], BLOCK_AIR);
+    CHECK_EQ_INT(hb.block[4], BLOCK_SAND);  /* row 4-01 */
+    CHECK_EQ_INT(hb.block[5], BLOCK_AIR);
     CHECK_EQ_INT(hb.block[8], BLOCK_AIR);
 
     CHECK_EQ_INT(hotbar_tap(&hb, X0 + 2 * P + 10, Y0 + 20), 1);
@@ -112,7 +113,7 @@ static void test_draw(void)
 
     blocktex_build(s_atlas);
     hotbar_init(&hb);
-    hb.block[5] = BLOCK_STONE; /* a filled slot after an empty one */
+    hb.block[6] = BLOCK_STONE; /* a filled slot after an empty one */
     for (c = 0; c < HOTBAR_SLOTS; c++) {
         int wrong = 0, white = 0, left = 0;
 
@@ -155,11 +156,16 @@ static void test_draw(void)
 }
 
 /* Row 3-03: a saved hotbar comes back as it was, with a torch put in the
- * first empty slot when it has none (a world from before torches). */
+ * first empty slot when it has none (a world from before torches), then
+ * (row 4-01) sand in the next empty one when it has none; water in a slot
+ * is taken out (it cannot be held). */
 static void test_load(void)
 {
     static const uint8_t old[HOTBAR_SLOTS] = { 1, 2, 3, 0, 3, 0, 0, 0, 0 };
     static const uint8_t has[HOTBAR_SLOTS] = { 0, 4, 1, 0, 0, 0, 0, 0, 2 };
+    static const uint8_t both[HOTBAR_SLOTS] = { 0, 5, 1, 4, 0, 0, 0, 0, 2 };
+    static const uint8_t sand[HOTBAR_SLOTS] = { 0, 5, 0, 0, 0, 0, 0, 0, 0 };
+    static const uint8_t wet[HOTBAR_SLOTS] = { 6, 1, 2, 3, 4, 6, 0, 0, 0 };
     static const uint8_t full[HOTBAR_SLOTS] = { 1, 2, 3, 1, 2, 3, 1, 2, 3 };
     Hotbar hb;
     int i;
@@ -168,15 +174,31 @@ static void test_load(void)
     CHECK_EQ_INT(hb.chosen, 4);
     CHECK_EQ_INT(hb.block[3], BLOCK_TORCH);
     CHECK_EQ_INT(hb.block[4], BLOCK_STONE);
-    CHECK_EQ_INT(hb.block[5], BLOCK_AIR);
+    CHECK_EQ_INT(hb.block[5], BLOCK_SAND);
+    CHECK_EQ_INT(hb.block[6], BLOCK_AIR);
     hotbar_load(&hb, has, 8);
-    for (i = 0; i < HOTBAR_SLOTS; i++)
+    CHECK_EQ_INT(hb.block[0], BLOCK_SAND);
+    for (i = 1; i < HOTBAR_SLOTS; i++)
         CHECK_EQ_INT(hb.block[i], has[i]);
     CHECK_EQ_INT(hb.chosen, 8);
+    hotbar_load(&hb, both, 2);
+    for (i = 0; i < HOTBAR_SLOTS; i++)
+        CHECK_EQ_INT(hb.block[i], both[i]);
+    hotbar_load(&hb, sand, 1);
+    CHECK_EQ_INT(hb.block[0], BLOCK_TORCH);
+    for (i = 1; i < HOTBAR_SLOTS; i++)
+        CHECK_EQ_INT(hb.block[i], sand[i]);
+    hotbar_load(&hb, wet, 0);
+    CHECK_EQ_INT(hb.block[0], BLOCK_SAND);
+    CHECK_EQ_INT(hb.block[5], BLOCK_AIR);
+    for (i = 1; i < 5; i++)
+        CHECK_EQ_INT(hb.block[i], wet[i]);
     hotbar_load(&hb, full, 0);
     for (i = 0; i < HOTBAR_SLOTS; i++)
         CHECK_EQ_INT(hb.block[i], full[i]);
     CHECK_EQ_INT(BLOCK_TORCH, 4);
+    CHECK_EQ_INT(BLOCK_SAND, 5); /* saves keep these numbers */
+    CHECK_EQ_INT(BLOCK_WATER, 6);
 }
 
 void test_hotbar(void)
