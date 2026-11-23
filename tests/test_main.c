@@ -34,6 +34,9 @@ int main(void)
     test_save_files();
     test_save_world();
     test_saveui();
+    test_worldname();
+    test_save_names();
+    test_worldlist();
 
     printf("PC tests: %d checks, %d failed\n", g_checks, g_fails);
     if (g_checks == 0) {

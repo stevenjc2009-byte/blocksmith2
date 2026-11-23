@@ -171,6 +171,33 @@ bool save_settings_unpack(const uint8_t in[SAVE_SETTINGS_SIZE], SaveSettings *s)
     return true;
 }
 
+void save_name_pack(const char *name, uint8_t out[SAVE_NAME_SIZE])
+{
+    size_t n = strlen(name);
+
+    memset(out + 8, 0, WORLDNAME_MAX);
+    memcpy(out + 8, name, n < WORLDNAME_MAX ? n : WORLDNAME_MAX);
+    seal(out, SAVE_NAME_SIZE, "BS2N");
+}
+
+bool save_name_unpack(const uint8_t in[SAVE_NAME_SIZE], char name[WORLDNAME_SIZE])
+{
+    char got[WORLDNAME_SIZE];
+    size_t n;
+
+    if (!sealed(in, SAVE_NAME_SIZE, "BS2N"))
+        return false;
+    memcpy(got, in + 8, WORLDNAME_MAX);
+    got[WORLDNAME_MAX] = '\0';
+    for (n = strlen(got); n < WORLDNAME_MAX; n++)
+        if (in[8 + n] != 0)
+            return false; /* bytes after the name's end */
+    if (!worldname_valid(got))
+        return false;
+    memcpy(name, got, WORLDNAME_SIZE);
+    return true;
+}
+
 void save_chunk_name(char *out, int cx, int cz)
 {
     sprintf(out, "x%dz%d.chk", cx, cz);

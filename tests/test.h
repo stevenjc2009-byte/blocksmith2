@@ -77,5 +77,9 @@ void test_save(void);
 void test_save_files(void);
 void test_save_world(void);
 void test_saveui(void);
+void test_worldname(void);
+void test_save_names(void);
+void test_worldlist(void);
+void test_worldlist_draw(void); /* test_worldlist_draw.c, called by test_worldlist() */
 
 #endif

@@ -8,6 +8,7 @@
 #include "chunk.h"
 #include "hotbar.h"
 #include "world.h"
+#include "worldname.h"
 
 /* Saving and loading worlds (roadmap row 2-04, kickoff P-9). Plain C file
  * calls (stdio and dirent), no 3DS calls, so the PC tests run it on a
@@ -17,6 +18,7 @@
  *   settings.dat               the view distance and the world played last
  *   worlds/<n>/world.dat       world n's seed, where the player stands and
  *                              looks, and the hotbar
+ *   worlds/<n>/name.dat        world n's name, if it was given one
  *   worlds/<n>/x<cx>z<cz>.chk  chunk (cx, cz) of world n, as it was changed
  * Only chunks that were changed get a file: every other chunk is made again
  * from the seed, the same every time. Worlds are numbered from 1; a new
@@ -44,6 +46,7 @@
 
 #define SAVE_INFO_SIZE 46     /* world.dat */
 #define SAVE_SETTINGS_SIZE 17 /* settings.dat */
+#define SAVE_NAME_SIZE 28     /* name.dat */
 #define SAVE_CHUNK_HEAD 20    /* a chunk file before its runs */
 #define SAVE_CHUNK_FILE_MAX (SAVE_CHUNK_HEAD + SAVE_RLE_MAX + 4) /* the biggest */
 
@@ -103,6 +106,13 @@ void save_settings_pack(const SaveSettings *s, uint8_t out[SAVE_SETTINGS_SIZE]);
  * range or the world number is past SAVE_WORLDS_MAX. */
 bool save_settings_unpack(const uint8_t in[SAVE_SETTINGS_SIZE], SaveSettings *s);
 
+/* name.dat: mark, version, the name in WORLDNAME_MAX bytes (the rest
+ * '\0'), CRC. */
+void save_name_pack(const char *name, uint8_t out[SAVE_NAME_SIZE]);
+/* False if the mark, version or CRC is wrong, anything follows the
+ * name's end, or the name is not one worldname_clean() makes. */
+bool save_name_unpack(const uint8_t in[SAVE_NAME_SIZE], char name[WORLDNAME_SIZE]);
+
 /* A chunk file's name, "x-3z12.chk"; at least 32 bytes. */
 void save_chunk_name(char *out, int cx, int cz);
 
@@ -158,6 +168,25 @@ bool save_chunk_write(SaveWorld *sw, const Chunk *c, int cx, int cz);
 
 bool save_settings_read(const char *root, SaveSettings *s);
 bool save_settings_write(const char *root, const SaveSettings *s);
+
+/* --- The world list (roadmap row 2-05, save_worlds.c) --- */
+
+/* The saved worlds' numbers, lowest first, at most cap of them: every
+ * folder in worlds/ named a world number (1 to SAVE_WORLDS_MAX, digits
+ * only, no leading zero) whose world.dat reads. Returns how many. */
+int save_world_ids(const char *root, int *ids, int cap);
+
+/* World id's name from its name.dat. False if it has none that reads;
+ * name is then "WORLD <id>". */
+bool save_name_read(const char *root, int id, char name[WORLDNAME_SIZE]);
+
+/* Give world id a name (one worldname_valid() takes). */
+bool save_name_write(const char *root, int id, const char *name);
+
+/* Delete world id: its world.dat (and world.dat.tmp) first, so a delete
+ * cut short leaves no world that reads, then every other file in its
+ * folder, then the folder. True if the folder is gone afterwards. */
+bool save_world_delete(const char *root, int id);
 
 /* --- Autosave --- */
 

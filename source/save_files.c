@@ -1,4 +1,5 @@
 #include "save.h"
+#include "save_io.h"
 
 #include <dirent.h>
 #include <stdio.h>
@@ -21,8 +22,7 @@ static uint8_t s_file[SAVE_CHUNK_FILE_MAX];
 
 /* --- Files --- */
 
-/* "<a>/<b>" into out; false if it does not fit. */
-static bool join(char out[SAVE_PATH_MAX], const char *a, const char *b)
+bool save_join(char out[SAVE_PATH_MAX], const char *a, const char *b)
 {
     int n = snprintf(out, SAVE_PATH_MAX, "%s/%s", a, b);
 
@@ -58,8 +58,7 @@ static bool make_dirs(const char *path)
     return is_dir(path);
 }
 
-/* Write n bytes to path by way of path.tmp. */
-static bool write_file(const char *path, const void *data, size_t n)
+bool save_write_file(const char *path, const void *data, size_t n)
 {
     char tmp[SAVE_PATH_MAX];
     FILE *f;
@@ -97,9 +96,8 @@ static long read_one(const char *path, uint8_t *buf, size_t cap)
     return n > cap ? -1 : (long)n;
 }
 
-/* path, or path.tmp, whichever first reads and passes ok(). */
-static long read_file(const char *path, uint8_t *buf, size_t cap,
-                      bool (*ok)(const uint8_t *buf, long n, void *arg), void *arg)
+long save_read_file(const char *path, uint8_t *buf, size_t cap,
+                    bool (*ok)(const uint8_t *buf, long n, void *arg), void *arg)
 {
     char tmp[SAVE_PATH_MAX];
     long n = read_one(path, buf, cap);
@@ -118,10 +116,10 @@ bool save_root_make(const char *root)
 {
     char worlds[SAVE_PATH_MAX];
 
-    return make_dirs(root) && join(worlds, root, "worlds") && make_dirs(worlds);
+    return make_dirs(root) && save_join(worlds, root, "worlds") && make_dirs(worlds);
 }
 
-static bool world_dir(char out[SAVE_PATH_MAX], const char *root, int id)
+bool save_world_dir(char out[SAVE_PATH_MAX], const char *root, int id)
 {
     int n = snprintf(out, SAVE_PATH_MAX, "%s/worlds/%d", root, id);
 
@@ -134,7 +132,7 @@ int save_free_id(const char *root)
     int id;
 
     for (id = 1; id <= SAVE_WORLDS_MAX; id++)
-        if (world_dir(dir, root, id) && !is_dir(dir))
+        if (save_world_dir(dir, root, id) && !is_dir(dir))
             return id;
     return 0;
 }
@@ -149,7 +147,8 @@ static bool read_info(const char *dir, SaveInfo *info)
     char path[SAVE_PATH_MAX];
     uint8_t buf[SAVE_INFO_SIZE];
 
-    return join(path, dir, "world.dat") && read_file(path, buf, sizeof buf, info_ok, info) >= 0;
+    return save_join(path, dir, "world.dat") &&
+           save_read_file(path, buf, sizeof buf, info_ok, info) >= 0;
 }
 
 bool save_world_exists(const char *root, int id)
@@ -157,7 +156,7 @@ bool save_world_exists(const char *root, int id)
     char dir[SAVE_PATH_MAX];
     SaveInfo info;
 
-    return id >= 1 && id <= SAVE_WORLDS_MAX && world_dir(dir, root, id) && read_info(dir, &info);
+    return id >= 1 && id <= SAVE_WORLDS_MAX && save_world_dir(dir, root, id) && read_info(dir, &info);
 }
 
 static bool store_load(void *ctx, Chunk *c, int cx, int cz)
@@ -181,7 +180,7 @@ bool save_world_open(SaveWorld *sw, const char *root, int id, bool make)
     sw->store.load = store_load;
     sw->store.save = store_save;
     sw->store.ctx = sw;
-    if (id < 1 || id > SAVE_WORLDS_MAX || !world_dir(sw->dir, root, id))
+    if (id < 1 || id > SAVE_WORLDS_MAX || !save_world_dir(sw->dir, root, id))
         return false;
     if (make && !make_dirs(sw->dir))
         return false;
@@ -216,7 +215,7 @@ bool save_world_write(SaveWorld *sw, const SaveInfo *info)
     uint8_t buf[SAVE_INFO_SIZE];
 
     save_info_pack(info, buf);
-    return join(path, sw->dir, "world.dat") && write_file(path, buf, sizeof buf);
+    return save_join(path, sw->dir, "world.dat") && save_write_file(path, buf, sizeof buf);
 }
 
 typedef struct {
@@ -237,7 +236,7 @@ static bool chunk_path(char out[SAVE_PATH_MAX], const SaveWorld *sw, int cx, int
     char name[32];
 
     save_chunk_name(name, cx, cz);
-    return join(out, sw->dir, name);
+    return save_join(out, sw->dir, name);
 }
 
 bool save_chunk_read(const SaveWorld *sw, Chunk *c, int cx, int cz)
@@ -250,7 +249,7 @@ bool save_chunk_read(const SaveWorld *sw, Chunk *c, int cx, int cz)
     want.cx = cx;
     want.cz = cz;
     want.c = c;
-    return read_file(path, s_file, sizeof s_file, chunk_ok, &want) >= 0;
+    return save_read_file(path, s_file, sizeof s_file, chunk_ok, &want) >= 0;
 }
 
 bool save_chunk_write(SaveWorld *sw, const Chunk *c, int cx, int cz)
@@ -260,7 +259,7 @@ bool save_chunk_write(SaveWorld *sw, const Chunk *c, int cx, int cz)
 
     /* Noted before writing: a write cut short can still leave a good .tmp. */
     return chunk_path(path, sw, cx, cz) && save_set_add(&sw->saved, cx, cz) &&
-           write_file(path, s_file, size);
+           save_write_file(path, s_file, size);
 }
 
 static bool settings_ok(const uint8_t *buf, long n, void *arg)
@@ -273,8 +272,8 @@ bool save_settings_read(const char *root, SaveSettings *s)
     char path[SAVE_PATH_MAX];
     uint8_t buf[SAVE_SETTINGS_SIZE];
 
-    return join(path, root, "settings.dat") &&
-           read_file(path, buf, sizeof buf, settings_ok, s) >= 0;
+    return save_join(path, root, "settings.dat") &&
+           save_read_file(path, buf, sizeof buf, settings_ok, s) >= 0;
 }
 
 bool save_settings_write(const char *root, const SaveSettings *s)
@@ -283,5 +282,5 @@ bool save_settings_write(const char *root, const SaveSettings *s)
     uint8_t buf[SAVE_SETTINGS_SIZE];
 
     save_settings_pack(s, buf);
-    return join(path, root, "settings.dat") && write_file(path, buf, sizeof buf);
+    return save_join(path, root, "settings.dat") && save_write_file(path, buf, sizeof buf);
 }

@@ -23,17 +23,20 @@
 #include "walk.h"
 #include "world.h"
 
-/* Roadmap row 2-04: the endless world, a settings screen, a seed for each
- * new world, and saving. The game starts on the new-world screen
- * (newworld.h): the bottom screen shows the world's seed, random at first,
- * over the sky blue top screen. X (or its button) rolls a new random seed,
- * Y (or its button) opens the 3DS keyboard to type one (a whole number is
- * that seed, words become one, seed.h), and A (or PLAY) makes a new world
- * from that seed, in the next free folder on the SD card (save.h). When a
- * saved world can be carried on, B (or CONTINUE, in place of the title)
- * opens the world played last instead: its changed chunks, where the player
- * stood and looked, the hotbar. The view distance and the world played last
- * are kept too. A new player starts in chunk (0, 0) of the seed's gentle
+/* Roadmap row 2-05: the endless world, a settings screen, a seed for each
+ * new world, saving, and a list of the saved worlds. With worlds saved the
+ * game starts on the world list (worldlist.h), over the sky blue top
+ * screen, the world played last chosen: A (or OPEN) opens the chosen world
+ * (its changed chunks, where the player stood and looked, the hotbar), Y
+ * (or RENAME) gives it a new name, L (or DELETE) deletes it after asking,
+ * and X (or NEW) goes to the new-world screen (newworld.h), which is where
+ * the game starts with no worlds saved. It shows the new world's seed,
+ * random at first: X (or its button) rolls a new random seed, Y (or its
+ * button) opens the 3DS keyboard to type one (a whole number is that seed,
+ * words become one, seed.h), A (or PLAY) makes a new world from that seed,
+ * in the next free folder on the SD card (save.h), and B (or BACK) goes
+ * back to the list. The view distance and the world played last are kept
+ * too. A new player starts in chunk (0, 0) of the seed's gentle
  * hills, facing north. The ground is made as the player walks (stream.h):
  * the chunks out to the view distance round the player's chunk are drawn
  * (3 at start: 7 x 7), one mesh each, and one more ring round them is kept;
@@ -58,9 +61,8 @@
  * game shows a new picture every second screen refresh, 30 a second, and a
  * counter in the bottom screen's top-left corner shows the frames a second
  * (its settings switch comes in roadmap 0.7). START saves and quits; on the
- * new-world screen it just quits. The chunk meshes are in meshes.c, the
- * new-world screen's loop in start.c, frame pacing and the crosshair in
- * frame.c. */
+ * start screens it just quits. The chunk meshes are in meshes.c, the start
+ * screens' loop in start.c, frame pacing and the crosshair in frame.c. */
 
 #define PI 3.14159265f
 
@@ -199,7 +201,7 @@ int main(void)
     u32 stale;
     StartChoice start;
     bool cont = false;
-    int k, pcx = 0, pcz = 0;
+    int k, world = 0, pcx = 0, pcz = 0;
 
     gfxInitDefault();
     blocktex_build(s_atlas);
@@ -218,15 +220,14 @@ int main(void)
     }
     paced = svcGetSystemTick();
     fps_init(&fps, paced);
-    start = start_choose_world(&seed, s_kept.last > 0 && save_world_exists(SAVE_ROOT, s_kept.last),
-                               &fps, &paced);
+    start = start_choose_world(&seed, &s_kept, &world, &fps, &paced);
     if (start == START_QUIT) {
         gpu_exit();
         gfxExit();
         return 0;
     }
-    if (start == START_CONTINUE) {
-        cont = save_world_open(&s_save, SAVE_ROOT, s_kept.last, false) &&
+    if (start == START_OPEN) {
+        cont = save_world_open(&s_save, SAVE_ROOT, world, false) &&
                save_world_read(&s_save, &info);
         if (cont)
             seed = info.seed;
@@ -235,6 +236,7 @@ int main(void)
     }
     if (cont) {
         s_saving = true;
+        s_kept.last = world;
     } else {
         int id = save_free_id(SAVE_ROOT);
 
@@ -275,9 +277,8 @@ int main(void)
     mat4_persp_tilt(&proj, 60.0f * PI / 180.0f, 400.0f / 240.0f, 0.1f, 160.0f);
 
     /* Making the world took a while: time, frame pacing and the frame count
-     * start again from now. A (PLAY) also turns right and B (CONTINUE)
-     * down, so keys still held from the new-world screen do nothing until
-     * they are let go. */
+     * start again from now. A (PLAY or OPEN) also turns right, so keys
+     * still held from the start screens do nothing until they are let go. */
     last = osGetTime();
     saved_at = last;
     paced = svcGetSystemTick();
