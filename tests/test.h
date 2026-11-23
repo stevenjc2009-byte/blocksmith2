@@ -70,5 +70,7 @@ void test_hotbar(void);
 void test_font(void);
 void test_fps(void);
 void test_settings(void);
+void test_seed(void);
+void test_newworld(void);
 
 #endif

@@ -27,6 +27,8 @@ int main(void)
     test_font();
     test_fps();
     test_settings();
+    test_seed();
+    test_newworld();
 
     printf("PC tests: %d checks, %d failed\n", g_checks, g_fails);
     if (g_checks == 0) {

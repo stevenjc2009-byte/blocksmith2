@@ -13,16 +13,23 @@
 #include "look.h"
 #include "mat4.h"
 #include "mesh.h"
+#include "newworld.h"
 #include "place.h"
 #include "player.h"
 #include "raycast.h"
+#include "seed.h"
 #include "settings.h"
 #include "stream.h"
 #include "walk.h"
 #include "world.h"
 
-/* Roadmap row 2-02: the endless world with a settings screen. The player
- * starts in chunk (0, 0) of gentle hills from a fixed seed, facing north.
+/* Roadmap row 2-03: the endless world, a settings screen, and a seed for
+ * each new world. The game starts on the new-world screen (newworld.h): the
+ * bottom screen shows the world's seed, random at first, over the sky blue
+ * top screen. X (or its button) rolls a new random seed, Y (or its button)
+ * opens the 3DS keyboard to type one (a whole number is that seed, words
+ * become one, seed.h), and A (or PLAY) makes the world from that seed. The
+ * player starts in chunk (0, 0) of the seed's gentle hills, facing north.
  * The ground is made as the player walks (stream.h): the chunks out to the
  * view distance round the player's chunk are drawn (3 at start: 7 x 7), one
  * mesh each, and one more ring round them is kept; one chunk or mesh is made
@@ -35,7 +42,8 @@
  * once. The Circle
  * Pad walks, by where the camera faces; gravity holds the player on the
  * ground, blocks stop them, and walking into a one-block step hops up it (no
- * jump button). A B X Y and the C-stick look around. A crosshair marks the
+ * jump button). A B X Y look around, and so does the C-stick on a New 3DS
+ * (an Old 3DS has none). A crosshair marks the
  * middle of the top screen; R breaks the block under it, up to 5 blocks
  * away, at once (timed mining comes with tools, kickoff P-4), and L puts the
  * chosen block against the face looked at, never inside the player. The
@@ -44,10 +52,9 @@
  * then empty); tapping a slot chooses it. The game shows a new picture
  * every second screen refresh, 30 a second, and a counter in the bottom
  * screen's top-left corner shows the frames a second (its settings switch
- * comes in roadmap 0.7). START quits. */
+ * comes in roadmap 0.7). START quits, on the new-world screen too. */
 
 #define PI 3.14159265f
-#define WORLD_SEED 2026u /* typed and random seeds come later (kickoff W-10) */
 
 static World s_world;
 /* One mesh per world slot, for the chunk in that slot (world.h);
@@ -233,9 +240,10 @@ static void read_walk(const Camera *cam, float *vx, float *vz)
     walk_velocity(pad.dx, pad.dy, cam->yaw, vx, vz);
 }
 
-static void read_look(LookInput *in)
+/* The look keys held, leaving out those in ignore. */
+static void read_look(LookInput *in, u32 ignore)
 {
-    u32 held = hidKeysHeld();
+    u32 held = hidKeysHeld() & ~ignore;
     circlePosition cs = { 0, 0 };
 
     hidCstickRead(&cs);
@@ -247,6 +255,76 @@ static void read_look(LookInput *in)
     in->cy = cs.dy;
 }
 
+/* Hand the frame over, then wait for screen refreshes until the second one
+ * since the last frame's wait: 30 frames a second. */
+static void end_frame(FpsCounter *fps, u64 *paced)
+{
+    gfxSwapBuffers();
+    do
+        gspWaitForVBlank();
+    while (!fps_pace_done(*paced, svcGetSystemTick()));
+    *paced = svcGetSystemTick();
+    fps_frame(fps, *paced);
+}
+
+/* Y on the new-world screen: the 3DS keyboard, to type a seed. Only OK
+ * with something typed changes *seed; Cancel leaves it. The keys pressed to
+ * close the keyboard can still be held when it returns, so one scan takes
+ * them in and they do not press anything on the new-world screen. */
+static void type_seed(uint32_t *seed)
+{
+    SwkbdState kb;
+    char text[SEED_TYPED_MAX * 4 + 1]; /* UTF-8: up to 4 bytes a character */
+
+    swkbdInit(&kb, SWKBD_TYPE_NORMAL, 2, SEED_TYPED_MAX);
+    swkbdSetHintText(&kb, "A number, or any words");
+    swkbdSetValidation(&kb, SWKBD_NOTEMPTY_NOTBLANK, 0, 0);
+    text[0] = '\0';
+    if (swkbdInputText(&kb, text, sizeof text) == SWKBD_BUTTON_CONFIRM)
+        seed_from_text(text, seed);
+    hidScanInput();
+}
+
+/* The new-world screen, until the player starts the world: true with its
+ * seed in *seed, or false if they quit (START, or the system closing the
+ * game). The top screen is sky blue, nothing made yet. */
+static bool choose_seed(uint32_t *seed, FpsCounter *fps, u64 *paced)
+{
+    *seed = seed_random(svcGetSystemTick());
+    while (aptMainLoop()) {
+        u32 down;
+        NewWorldButton tapped = NEWWORLD_NONE;
+        u16 fw = 0, fh = 0;
+        u8 *fb;
+
+        hidScanInput();
+        down = hidKeysDown();
+        if (down & KEY_START)
+            return false;
+        if (down & KEY_TOUCH) {
+            touchPosition touch;
+
+            hidTouchRead(&touch);
+            tapped = newworld_button_at(touch.px, touch.py);
+        }
+        if ((down & KEY_A) || tapped == NEWWORLD_PLAY)
+            return true;
+        if ((down & KEY_X) || tapped == NEWWORLD_RANDOM)
+            *seed = seed_random(svcGetSystemTick());
+        if ((down & KEY_Y) || tapped == NEWWORLD_TYPE)
+            type_seed(seed);
+
+        fb = gfxGetFramebuffer(GFX_BOTTOM, GFX_LEFT, &fw, &fh);
+        newworld_draw_bgr8(fb, fh, fw, *seed);
+        fps_draw_bgr8(fb, fh, fw, fps->shown);
+        gfxFlushBuffers();
+        gpu_frame_begin();
+        gpu_frame_end();
+        end_frame(fps, paced);
+    }
+    return false;
+}
+
 int main(void)
 {
     /* Facing north, looking a little down; the eye follows the player. */
@@ -256,13 +334,27 @@ int main(void)
     FpsCounter fps;
     Mat4 proj;
     u64 last, paced;
+    uint32_t seed;
+    u32 stale;
 
     gfxInitDefault();
-    world_init(&s_world, WORLD_SEED);
     blocktex_build(s_atlas);
     hotbar_init(&hotbar);
     settings_init(&s_settings);
-    if (!gpu_init() || !stream_frame(0, 0, s_settings.view, STREAM_ALL)) {
+    if (!gpu_init()) {
+        gpu_exit();
+        gfxExit();
+        return 1;
+    }
+    paced = svcGetSystemTick();
+    fps_init(&fps, paced);
+    if (!choose_seed(&seed, &fps, &paced)) {
+        gpu_exit();
+        gfxExit();
+        return 0;
+    }
+    world_init(&s_world, seed);
+    if (!stream_frame(0, 0, s_settings.view, STREAM_ALL)) {
         free_meshes();
         gpu_exit();
         gfxExit();
@@ -271,9 +363,14 @@ int main(void)
     player_spawn(&player, &s_world, 0, 0);
     mat4_persp_tilt(&proj, 60.0f * PI / 180.0f, 400.0f / 240.0f, 0.1f, 160.0f);
 
+    /* Making the world took a while: time, frame pacing and the frame count
+     * start again from now. A (PLAY) also turns right, so keys still held
+     * from the new-world screen do nothing until they are let go. */
     last = osGetTime();
     paced = svcGetSystemTick();
     fps_init(&fps, paced);
+    hidScanInput();
+    stale = hidKeysHeld();
     while (aptMainLoop()) {
         LookInput in;
         Mat4 view, mvp;
@@ -282,6 +379,7 @@ int main(void)
         int i, j;
 
         hidScanInput();
+        stale &= hidKeysHeld(); /* a key let go is no longer left out */
         if (hidKeysDown() & KEY_START)
             break;
         if (hidKeysDown() & KEY_SELECT)
@@ -309,7 +407,7 @@ int main(void)
             if (hidKeysDown() & KEY_DRIGHT)
                 settings_step(&s_settings, 1);
         } else {
-            read_look(&in);
+            read_look(&in, stale);
             look_rates(&in, &yaw_rate, &pitch_rate);
             camera_turn(&cam, yaw_rate * dt, pitch_rate * dt);
             read_walk(&cam, &vx, &vz);
@@ -347,15 +445,7 @@ int main(void)
                 gpu_draw(s_mesh[j][i], s_verts[j][i], &mvp);
         gpu_frame_end();
         draw_crosshair();
-
-        /* Hand the picture over, then wait for screen refreshes until the
-         * second one since the last frame's wait: 30 frames a second. */
-        gfxSwapBuffers();
-        do
-            gspWaitForVBlank();
-        while (!fps_pace_done(paced, svcGetSystemTick()));
-        paced = svcGetSystemTick();
-        fps_frame(&fps, paced);
+        end_frame(&fps, &paced);
     }
 
     free_meshes();
