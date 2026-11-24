@@ -41,8 +41,8 @@ void hotbar_load(Hotbar *hb, const uint8_t blocks[HOTBAR_SLOTS], int chosen)
 {
     int i;
 
-    for (i = 0; i < HOTBAR_SLOTS; i++) /* water cannot be held (row 4-01) */
-        hb->block[i] = blocks[i] == BLOCK_WATER ? BLOCK_AIR : blocks[i];
+    for (i = 0; i < HOTBAR_SLOTS; i++) /* water cannot be held (rows 4-01, 4-04) */
+        hb->block[i] = block_is_water(blocks[i]) ? BLOCK_AIR : blocks[i];
     add_if_missing(hb, BLOCK_TORCH); /* worlds from before row 3-03 */
     add_if_missing(hb, BLOCK_SAND);  /* and before row 4-01 */
     hb->chosen = chosen;

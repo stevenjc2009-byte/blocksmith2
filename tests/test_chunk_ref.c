@@ -64,7 +64,8 @@ static int ref_solid(const Chunk *c, const Chunk *const nb[NB_COUNT], int x, int
     if (o == NULL)
         return 0;
     x = chunk_get(o, x, y, z);
-    return x != BLOCK_AIR && x != BLOCK_TORCH && x != BLOCK_WATER; /* every other block */
+    return x != BLOCK_AIR && x != BLOCK_TORCH && x != BLOCK_WATER &&
+           !(x >= BLOCK_FLOW_1 && x <= BLOCK_FALL); /* every other block (row 4-04: no water of any kind) */
 }
 
 typedef struct {
@@ -155,7 +156,7 @@ static int ref_mesh(const Chunk *const nb[NB_COUNT], float ox, float oz, MeshVer
             for (x = 0; x < CHUNK_SIZE; x++) {
                 int b = chunk_get(&s_c, x, y, z);
 
-                if (b == BLOCK_AIR || b == BLOCK_WATER) /* water: its own mesh (row 4-01) */
+                if (b == BLOCK_AIR || block_is_water(b)) /* water: its own mesh (row 4-01) */
                     continue;
                 if (b == BLOCK_TORCH) { /* the stick, whatever is round it */
                     if (out)

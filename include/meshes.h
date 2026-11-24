@@ -4,6 +4,7 @@
 #include <stdbool.h>
 
 #include "mat4.h"
+#include "water_flow.h"
 #include "world.h"
 
 /* The world's chunk meshes, in linear memory for the GPU: one per world
@@ -28,6 +29,14 @@ bool meshes_stream(World *w, int pcx, int pcz, int view, int jobs);
  * time, so a torch's pool of light spreads over a few frames. A change to a
  * torch is told by w->torch_edits moving on since the last call. */
 bool meshes_rebuild_around(const World *w, int x, int y, int z);
+
+/* Rebuild the built meshes the n changes the flowing water just made touch
+ * (water_flow.h: f->changed after water_flow_update()), each once: only a
+ * chunk's water mesh, as the blocks' mesh treats water as air, but both
+ * where a torch was washed away, and the chunks round a washed-away torch
+ * marked stale for its light as meshes_rebuild_around() does. False if out
+ * of memory. */
+bool meshes_water_changed(const World *w, const WaterFlowChange *ch, int n);
 
 /* Every mesh, drawn with mvp (between gpu_frame_begin() and gpu_frame_end()). */
 void meshes_draw(const Mat4 *mvp);

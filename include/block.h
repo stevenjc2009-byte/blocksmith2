@@ -12,7 +12,8 @@ enum {
     BLOCK_STONE,
     BLOCK_TORCH, /* row 3-03: a small stick that lights the cells round it (light.h) */
     BLOCK_SAND,  /* row 4-01: beaches, river beds and the sea floor */
-    BLOCK_WATER, /* row 4-01: still water in seas and rivers; not solid, see-through */
+    BLOCK_WATER, /* row 4-01: still water in seas and rivers; not solid, see-through.
+                    Row 4-04: a source, the water that never runs dry (water_flow.h) */
     /* Row 4-02 (biomes). Ids are stored in saved worlds: only ever add at the end. */
     BLOCK_SNOWY_GRASS,       /* snow on top, dirt sides with a white fringe */
     BLOCK_SNOW,              /* a whole block of snow: mountain tops, cold beaches */
@@ -29,6 +30,20 @@ enum {
     BLOCK_LOG,              /* row 4-05: oak log, bark sides and rings top and bottom (trees too, row 4-03) */
     BLOCK_COBBLESTONE,      /* row 4-05: village foundations, wells and ruins */
     BLOCK_MOSSY_COBBLESTONE, /* row 4-05: ruins */
+    /* Row 4-04: flowing water (water_flow.h), its level in its id: level 1
+     * runs beside a source, each step out one level more, level 7 the
+     * thinnest. Falling water pours down from water above it, full height.
+     * All water, like BLOCK_WATER (block_is_water()). These eight must stay
+     * together and in this order (water.h reads the level from the id).
+     * Saved ids: they come after every earlier block, never between. */
+    BLOCK_FLOW_1,
+    BLOCK_FLOW_2,
+    BLOCK_FLOW_3,
+    BLOCK_FLOW_4,
+    BLOCK_FLOW_5,
+    BLOCK_FLOW_6,
+    BLOCK_FLOW_7,
+    BLOCK_FALL,
     BLOCK_COUNT
 };
 
@@ -51,5 +66,10 @@ int block_face_tile(int block, int face);
  * hides the faces of the blocks beside it and stops light? Every block is
  * except air, a torch and water (and anything not a block). */
 bool block_solid(int block);
+
+/* Is the block water of any kind: still (BLOCK_WATER), flowing or falling
+ * (row 4-04)? Everything that treats water as water asks this, never
+ * BLOCK_WATER alone. */
+bool block_is_water(int block);
 
 #endif

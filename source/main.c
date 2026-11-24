@@ -26,6 +26,7 @@
 #include "start.h"
 #include "terrain.h"
 #include "walk.h"
+#include "water_flow.h"
 #include "weather.h"
 #include "world.h"
 
@@ -80,7 +81,8 @@
  * (weather.h); the weather is saved too. The chunk meshes are in meshes.c,
  * the start screens' loop in start.c, frame pacing and the crosshair in
  * frame.c, the Circle Pad and look keys read in controls.c, the sky drawn
- * in skydraw.c. */
+ * in skydraw.c. Water let out (a bank broken) runs downhill and spreads,
+ * a cell every quarter second (row 4-04, water_flow.h). */
 
 #define PI 3.14159265f
 
@@ -95,6 +97,7 @@ static u64 s_msg_until;
 static LidSave s_lid; /* the lid closing or HOME saves the game */
 static float s_daytime = SKY_NEW_WORLD; /* the time of day (sky.h) */
 static Weather s_weather; /* rain and snow (weather.h) */
+static WaterFlow s_flow;   /* flowing water (row 4-04, water_flow.h) */
 
 /* The bottom screen: the settings screen while it is open, else grass green
  * with the hotbar along its foot, the SAVE button and the save message
@@ -224,6 +227,8 @@ int main(void)
             s_kept.last = id;
     }
     world_init(&s_world, seed);
+    water_flow_init(&s_flow);
+    water_flow_attach(&s_flow, &s_world); /* before any chunk loads */
     if (s_saving)
         savebg_init(&s_world, &s_save);
     if (cont) {
@@ -339,6 +344,9 @@ int main(void)
                 !hand_place(&s_world, &cam, &player, hotbar_block(&hotbar)))
                 break;
         }
+        water_flow_update(&s_flow, &s_world, dt); /* settings open too, like the sky */
+        if (!meshes_water_changed(&s_world, s_flow.changed, s_flow.changed_n))
+            break; /* out of memory for a mesh */
         if (save_due(osGetTime(), saved_at)) {
             wanted = true;
             saved_at = osGetTime();

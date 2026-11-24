@@ -1,4 +1,5 @@
 #include <3ds.h>
+#include <string.h>
 
 #include "chunk_mesh.h"
 #include "gpu.h"
@@ -20,6 +21,9 @@ static bool s_meshed[WORLD_SLOTS][WORLD_SLOTS];
  * mesh; NULL when it has none. */
 static MeshVertex *s_water[WORLD_SLOTS][WORLD_SLOTS];
 static int s_water_verts[WORLD_SLOTS][WORLD_SLOTS];
+/* w->torch_edits when meshes.c last relit round a change (row 3-03): a
+ * change to a torch is told by it moving on. */
+static unsigned s_torch_edits;
 
 static void free_verts(MeshVertex **v, int *n)
 {
@@ -131,7 +135,6 @@ static bool in_list(const int touched[WORLD_TOUCHED_MAX][2], int n, int cx, int 
 
 bool meshes_rebuild_around(const World *w, int x, int y, int z)
 {
-    static unsigned s_torch_edits; /* w->torch_edits at the last call */
     int touched[WORLD_TOUCHED_MAX][2], box[4];
     int n, k, cx, cz;
     bool torch = w->torch_edits != s_torch_edits;
@@ -147,6 +150,74 @@ bool meshes_rebuild_around(const World *w, int x, int y, int z)
             for (cx = box[0]; cx <= box[2]; cx++)
                 if (world_chunk(w, cx, cz) && !in_list(touched, n, cx, cz))
                     s_meshed[world_slot(cz)][world_slot(cx)] = false; /* stale: kept, drawn */
+    return true;
+}
+
+/* Rebuild only the water mesh of loaded chunk (cx, cz), whose blocks' mesh
+ * a change of water does not touch (the blocks' mesh treats water as air).
+ * False if out of memory. */
+static bool build_water(const World *w, int cx, int cz)
+{
+    int i = world_slot(cx), j = world_slot(cz);
+    const Chunk *nb[NB_COUNT];
+
+    free_verts(&s_water[j][i], &s_water_verts[j][i]);
+    world_neighbours(w, cx, cz, nb);
+    if (!build_verts(&s_water[j][i], &s_water_verts[j][i], world_chunk(w, cx, cz), nb, cx, cz,
+                     water_mesh_count, water_mesh_build)) {
+        free_mesh(i, j);
+        return false;
+    }
+    return true;
+}
+
+/* What meshes_water_changed() redoes in each slot's chunk: REDO_WATER its
+ * water mesh, REDO_ALL both (a torch went in it or beside it). */
+enum { REDO_NONE, REDO_WATER, REDO_ALL };
+
+bool meshes_water_changed(const World *w, const WaterFlowChange *ch, int n)
+{
+    static uint8_t redo[WORLD_SLOTS][WORLD_SLOTS];
+    int touched[WORLD_TOUCHED_MAX][2], box[4];
+    int k, t, m, i, j, cx, cz;
+
+    if (n == 0)
+        return true;
+    memset(redo, REDO_NONE, sizeof redo);
+    /* Each built mesh a change shows in, once however many changes it has;
+     * a chunk still waiting for its mesh gets them when it is built. */
+    for (k = 0; k < n; k++) {
+        m = world_touched_chunks(w, ch[k].x, ch[k].z, touched);
+        for (t = 0; t < m; t++) {
+            uint8_t *r = &redo[world_slot(touched[t][1])][world_slot(touched[t][0])];
+
+            if (s_meshed[world_slot(touched[t][1])][world_slot(touched[t][0])] &&
+                *r < (ch[k].torch ? REDO_ALL : REDO_WATER))
+                *r = ch[k].torch ? REDO_ALL : REDO_WATER;
+        }
+    }
+    /* A torch washed away: the chunks round it it lit go stale, as when one
+     * is broken (meshes_rebuild_around()). Water lets light through like
+     * air, so no other change of water changes any light. */
+    for (k = 0; k < n; k++)
+        if (ch[k].torch && light_touched_box(w, ch[k].x, ch[k].y, ch[k].z, true, box))
+            for (cz = box[1]; cz <= box[3]; cz++)
+                for (cx = box[0]; cx <= box[2]; cx++)
+                    if (world_chunk(w, cx, cz) && redo[world_slot(cz)][world_slot(cx)] != REDO_ALL)
+                        s_meshed[world_slot(cz)][world_slot(cx)] = false; /* stale: kept, drawn */
+    s_torch_edits = w->torch_edits;
+    for (j = 0; j < WORLD_SLOTS; j++)
+        for (i = 0; i < WORLD_SLOTS; i++) {
+            const WorldSlot *sl = &w->slots[j][i];
+
+            if (redo[j][i] == REDO_NONE || !sl->loaded)
+                continue;
+            if (!s_meshed[j][i] && redo[j][i] == REDO_WATER)
+                continue; /* stale now: rebuilt whole soon */
+            if (!(redo[j][i] == REDO_ALL ? build_mesh(w, sl->cx, sl->cz)
+                                         : build_water(w, sl->cx, sl->cz)))
+                return false;
+        }
     return true;
 }
 

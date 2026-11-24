@@ -153,10 +153,15 @@ static void random_fill(Chunk *c, int ylo, int yhi, int water, int other)
             for (x = 0; x < CHUNK_SIZE; x++) {
                 int r = rnd(100);
 
-                if (r < water)
+                if (r < water) {
                     chunk_set(c, x, y, z, BLOCK_WATER);
-                else if (r < water + other)
-                    chunk_set(c, x, y, z, 1 + rnd(BLOCK_COUNT - 1));
+                } else if (r < water + other) {
+                    int b = 1 + rnd(BLOCK_COUNT - 1);
+
+                    /* Still water only: this reference is row 4-01's
+                     * (flowing water: test_flow_mesh.c). */
+                    chunk_set(c, x, y, z, block_is_water(b) ? BLOCK_WATER : b);
+                }
             }
 }
 

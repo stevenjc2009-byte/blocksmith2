@@ -33,6 +33,15 @@
 #define PLAYER_SWIM_EASE 12.0f  /* how fast its speed settles on that, a second */
 #define PLAYER_SWIM_KICK 12.0f  /* up speed to climb out: rises 2.57, clears 2.2 */
 
+/* Flowing water (row 4-04): in water, the current of the cell at the feet
+ * (water_current(), water.h: one block long, along the flow) carries the
+ * body PLAYER_CURRENT blocks a second on top of walking, which is 0.014
+ * blocks each Minecraft tick (1/20 s), Minecraft's push. Still and
+ * falling water have no current. In flowing water thinner than still
+ * water, the surface the body floats at is lower by as much as the cell's
+ * drawn top is (water_height()). */
+#define PLAYER_CURRENT 0.28f
+
 typedef struct {
     float x, y, z;   /* feet, middle of the box */
     float vy;        /* up speed, blocks a second */

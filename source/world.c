@@ -14,6 +14,7 @@ void world_init(World *w, uint32_t seed)
     w->store = NULL;
     w->lost = 0;
     w->torch_edits = 0;
+    w->watch = NULL;
     for (j = 0; j < WORLD_SLOTS; j++)
         for (i = 0; i < WORLD_SLOTS; i++) {
             w->slots[j][i].loaded = false;
@@ -24,6 +25,11 @@ void world_init(World *w, uint32_t seed)
 void world_set_store(World *w, const WorldStore *store)
 {
     w->store = store;
+}
+
+void world_set_watch(World *w, const WorldWatch *watch)
+{
+    w->watch = watch;
 }
 
 int world_slot(int c)
@@ -71,6 +77,8 @@ void world_load(World *w, int cx, int cz)
     s->cx = cx;
     s->cz = cz;
     s->loaded = true;
+    if (w->watch && w->watch->load)
+        w->watch->load(w->watch->ctx, w, cx, cz);
 }
 
 void world_unload(World *w, int cx, int cz)
@@ -127,6 +135,8 @@ void world_set(World *w, int x, int y, int z, int block)
         slot_of(w, cx, cz)->changed = true;
         if (before == BLOCK_TORCH || block == BLOCK_TORCH)
             w->torch_edits++;
+        if (w->watch && w->watch->set)
+            w->watch->set(w->watch->ctx, w, x, y, z);
     }
 }
 
@@ -134,7 +144,7 @@ bool world_break(World *w, int x, int y, int z)
 {
     int b = world_get(w, x, y, z);
 
-    if (y <= 0 || b == BLOCK_AIR || b == BLOCK_WATER)
+    if (y <= 0 || b == BLOCK_AIR || block_is_water(b))
         return false;
     world_set(w, x, y, z, BLOCK_AIR);
     if (world_get(w, x, y + 1, z) == BLOCK_TORCH)

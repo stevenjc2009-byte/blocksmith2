@@ -303,7 +303,7 @@ static int ref_build(int cx, int cz, MeshVertex *out)
                 int wx = cx * CHUNK_SIZE + x, wz = cz * CHUNK_SIZE + z;
                 int b = world_get(&s_w, wx, y, wz);
 
-                if (b == BLOCK_AIR || b == BLOCK_WATER) /* water has its own mesh (water_mesh.h) */
+                if (b == BLOCK_AIR || block_is_water(b)) /* water has its own mesh (water_mesh.h) */
                     continue;
                 for (f = 0; f < FACE_COUNT; f++)
                     if (!ref_solid(wx + k_step[f][0], y + k_step[f][1], wz + k_step[f][2])) {

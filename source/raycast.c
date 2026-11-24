@@ -66,7 +66,7 @@ bool raycast(const World *w, float ox, float oy, float oz,
         if (t > reach)
             return false;
         b = world_get(w, x, y, z);
-        if (b != BLOCK_AIR && b != BLOCK_WATER) { /* row 4-01: through water */
+        if (b != BLOCK_AIR && !block_is_water(b)) { /* rows 4-01, 4-04: through water */
             hit->x = x;
             hit->y = y;
             hit->z = z;

@@ -48,7 +48,7 @@ void test_ref_light(const Chunk *c, const Chunk *const nb[NB_COUNT])
                 int b = o ? chunk_get(o, x % CHUNK_SIZE, y, z % CHUNK_SIZE) : BLOCK_AIR;
 
                 /* Light goes through air, torches and water (row 4-01), nothing else. */
-                s_open[y][z][x] = b == BLOCK_AIR || b == BLOCK_TORCH || b == BLOCK_WATER;
+                s_open[y][z][x] = b == BLOCK_AIR || b == BLOCK_TORCH || block_is_water(b);
                 if (b == BLOCK_TORCH) {
                     s_ref[y][z][x] = 14;
                     any = 1;

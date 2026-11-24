@@ -21,8 +21,6 @@ int block_face_tile(int block, int face)
         return TILE_TORCH;
     case BLOCK_SAND:
         return TILE_SAND;
-    case BLOCK_WATER: /* its own mesh (water_mesh.h) */
-        return TILE_WATER;
     case BLOCK_SNOWY_GRASS:
         if (face == FACE_POS_Y)
             return TILE_SNOW;
@@ -58,6 +56,8 @@ int block_face_tile(int block, int face)
     case BLOCK_MOSSY_COBBLESTONE:
         return TILE_MOSSY_COBBLE;
     default:
+        if (block_is_water(block)) /* every kind: its own mesh (water_mesh.h) */
+            return TILE_WATER;
         return -1; /* air, or not a block */
     }
 }
@@ -65,5 +65,10 @@ int block_face_tile(int block, int face)
 bool block_solid(int block)
 {
     return block == BLOCK_GRASS || block == BLOCK_DIRT || block == BLOCK_STONE ||
-           block == BLOCK_SAND || (block >= BLOCK_SNOWY_GRASS && block < BLOCK_COUNT);
+           block == BLOCK_SAND || (block >= BLOCK_SNOWY_GRASS && block <= BLOCK_MOSSY_COBBLESTONE);
+}
+
+bool block_is_water(int block)
+{
+    return block == BLOCK_WATER || (block >= BLOCK_FLOW_1 && block <= BLOCK_FALL);
 }

@@ -56,6 +56,11 @@ int main(void)
     test_structure();
     test_structure_world();
     test_structure_biome();
+    test_flow();
+    test_flow_queue();
+    test_flow_world();
+    test_flow_mesh();
+    test_flow_swim();
 
     printf("PC tests: %d checks, %d failed\n", g_checks, g_fails);
     if (g_checks == 0) {

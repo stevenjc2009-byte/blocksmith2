@@ -46,13 +46,27 @@ typedef struct {
     bool changed; /* a block changed since it was loaded or last kept */
 } WorldSlot;
 
+struct World;
+
+/* Row 4-04: who is told when the world changes (water_flow.h wakes the
+ * water round a change and finds the flowing water in a chunk as it
+ * loads). set is called after world_set() really changed block (x, y, z);
+ * load after world_load() loaded chunk (cx, cz). Either may be NULL. Both
+ * get ctx back. */
 typedef struct {
+    void (*set)(void *ctx, const struct World *w, int x, int y, int z);
+    void (*load)(void *ctx, const struct World *w, int cx, int cz);
+    void *ctx;
+} WorldWatch;
+
+typedef struct World {
     WorldSlot slots[WORLD_SLOTS][WORLD_SLOTS]; /* [z][x], see world_slot() */
     uint32_t seed;
     const WorldStore *store; /* NULL: none */
     int lost; /* changed chunks put away that the store could not keep */
     unsigned torch_edits; /* world_set() calls that put or took away a torch
                              (row 3-03: meshes.c relights round them) */
+    const WorldWatch *watch; /* NULL: nobody (row 4-04) */
 } World;
 
 /* An empty world: nothing loaded yet, no store. Its ground comes from the
@@ -62,6 +76,10 @@ void world_init(World *w, uint32_t seed);
 /* Give the world a store (NULL: none), which must stay valid while the
  * world uses it. Give it before loading any chunk. */
 void world_set_store(World *w, const WorldStore *store);
+
+/* Give the world a watcher (NULL: none, as world_init() leaves it), which
+ * must stay valid while the world uses it (row 4-04). */
+void world_set_watch(World *w, const WorldWatch *watch);
 
 /* The slot index (0 to WORLD_SLOTS - 1) for chunk position c, on x or z. */
 int world_slot(int c);
@@ -96,7 +114,8 @@ void world_set(World *w, int x, int y, int z, int block);
 
 /* Break the block at (x, y, z): it turns to air, and so does a torch
  * standing on it (row 3-03: a torch needs a solid block under it). False,
- * and nothing changes, for air, for water (row 4-01), for y 0 (the floor
+ * and nothing changes, for air, for water of any kind (rows 4-01, 4-04,
+ * block_is_water()), for y 0 (the floor
  * of the world stays, so nobody can dig out of it) and for spots outside a
  * loaded chunk. */
 bool world_break(World *w, int x, int y, int z);

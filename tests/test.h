@@ -115,6 +115,11 @@ void test_structure_world(void);
 void test_structure_biome(void);
 /* Row 4-05's checks of one village built in the world (test_structure_world.c). */
 void test_check_village(uint32_t seed, const VillagePlan *p);
+void test_flow(void);       /* row 4-04: flowing water */
+void test_flow_queue(void);
+void test_flow_world(void);
+void test_flow_mesh(void);
+void test_flow_swim(void);
 
 /* Row 3-03's reference torch light (test_light.c): fills a table for chunk
  * c and its neighbours (nb as chunk_mesh.h, NULL entries air) from the rule

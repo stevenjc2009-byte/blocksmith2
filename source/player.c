@@ -4,6 +4,7 @@
 #include "player.h"
 
 #include "block.h"
+#include "water.h"
 
 /* Touching is not overlapping: a box face exactly on a block face, or a
  * float rounding hair past it, does not count as inside the block. */
@@ -106,7 +107,7 @@ static bool move_z(Player *p, const World *w, float d)
 
 static bool is_water(const World *w, int x, int y, int z)
 {
-    return y >= 0 && y < WORLD_HEIGHT && world_get(w, x, y, z) == BLOCK_WATER;
+    return y >= 0 && y < WORLD_HEIGHT && block_is_water(world_get(w, x, y, z));
 }
 
 bool player_in_water(const World *w, const Player *p, float *surface)
@@ -117,8 +118,13 @@ bool player_in_water(const World *w, const Player *p, float *surface)
         return false;
     while (is_water(w, x, y + 1, z))
         y++;
-    if (surface != NULL)
-        *surface = (float)(y + 1);
+    if (surface != NULL) {
+        /* Row 4-04: thinner flowing water floats the body lower, by as
+         * much as its drawn top is under still water's. */
+        float h = water_height(world_get(w, x, y, z));
+
+        *surface = (float)(y + 1) - (h < WATER_TOP ? WATER_TOP - h : 0.0f);
+    }
     return true;
 }
 
@@ -157,8 +163,14 @@ void player_step(Player *p, const World *w, float vx, float vz, float dt)
     int n, i;
 
     if (wet) {
+        float fx, fz;
+
         dx *= PLAYER_SWIM_SCALE;
         dz *= PLAYER_SWIM_SCALE;
+        /* Row 4-04: the current at the feet carries the body along. */
+        water_current(w, down(p->x), down(p->y + EPS), down(p->z), &fx, &fz);
+        dx += fx * PLAYER_CURRENT * dt;
+        dz += fz * PLAYER_CURRENT * dt;
         swim_speed(p, surface, dt);
     } else {
         p->vy -= PLAYER_GRAVITY * dt;

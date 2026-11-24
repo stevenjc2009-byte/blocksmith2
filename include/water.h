@@ -27,10 +27,52 @@
 #define WATER_FOG_START 1.0f
 #define WATER_FOG_END 12.0f
 
+/* Row 4-04: water's level, read from its id (block.h). A source
+ * (BLOCK_WATER) is level 0; flowing water is level 1 (beside a source) to
+ * WATER_LEVEL_MAX (the thinnest); falling water is WATER_FALLING. */
+#define WATER_LEVEL_MAX 7
+#define WATER_FALLING 8
+
+/* The level of block b: 0 to WATER_FALLING, or -1 if b is not water. */
+int water_level(int b);
+
+/* The block of water at level 0 to WATER_FALLING; BLOCK_AIR for any other
+ * number. */
+int water_block(int level);
+
+/* How much water block b holds, as Minecraft counts it: 8 for a source and
+ * for falling water, 8 - n for flowing water at level n, 0 for anything
+ * that is not water. Water runs on to a cell with one less. */
+int water_amount(int b);
+
+/* How high the top of a water cell of block b sits up its cell when there
+ * is no water above it: WATER_TOP for a source, (8 - n) / 9 for flowing
+ * water at level n (7/9 down to 1/9), the whole cell (1) for falling
+ * water; 0 for anything that is not water. A cell with water above is
+ * always full. */
+float water_height(int b);
+
+/* Does row[0 .. n - 1] hold any water (block_is_water())? n a multiple of
+ * 4; for whole layers of a chunk, four bytes at a time. */
+bool water_row_has(const uint8_t *row, int n);
+
+/* Does row[0 .. n - 1] hold any flowing or falling water (water that is not
+ * a source)? n a multiple of 4. */
+bool water_row_flowing(const uint8_t *row, int n);
+
 /* Is the eye at (x, y, z) under water: in a water cell and below its
- * surface (WATER_TOP up the cell, or the whole cell when there is water
- * above)? */
+ * surface (water_height() up the cell, or the whole cell when there is
+ * water above)? */
 bool water_eye_under(const World *w, float x, float y, float z);
+
+/* Row 4-04: which way the water in cell (x, y, z) runs, flat, as
+ * Minecraft works it out: from each side, the cell's own amount / 9 less
+ * the side's (a side that is open, not water, counts the water under it,
+ * if any, one cell lower; a solid side counts nothing), added up as a
+ * push toward the lower sides, then made one block long. (*fx, *fz) is
+ * that, or (0, 0) for still water, for falling water (which only pours
+ * down) and for a cell that is not water. */
+void water_current(const World *w, int x, int y, int z, float *fx, float *fz);
 
 /* The colour of the fog and the sky under water, 0xRRGGBBAA: a deep blue
  * times the world's light (sky.h: 1 by day, less at night), alpha 0xFF. */

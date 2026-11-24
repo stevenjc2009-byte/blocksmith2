@@ -130,7 +130,7 @@ static bool slow_walk(double ox, double oy, double oz, double dx, double dy, dou
         int x = cell(ox + dx * t), y = cell(oy + dy * t), z = cell(oz + dz * t);
         int b = world_get(&s_w, x, y, z);
 
-        if ((x != sx || y != sy || z != sz) && b != BLOCK_AIR && b != BLOCK_WATER) /* through water */
+        if ((x != sx || y != sy || z != sz) && b != BLOCK_AIR && !block_is_water(b)) /* through water */
             return true;
     }
     return false;
@@ -183,7 +183,7 @@ static void test_random(void)
             hits++;
             /* The block is solid, the ray meets it on the named face, and
              * nothing solid comes before. */
-            if (world_get(&s_w, h.x, h.y, h.z) == BLOCK_AIR || world_get(&s_w, h.x, h.y, h.z) == BLOCK_WATER ||
+            if (world_get(&s_w, h.x, h.y, h.z) == BLOCK_AIR || block_is_water(world_get(&s_w, h.x, h.y, h.z)) ||
                 h.dist < 0.0f || h.dist > RAY_REACH ||
                 !on_face(ox + dx * h.dist, oy + dy * h.dist, oz + dz * h.dist, h.x, h.y, h.z, h.face, 1e-3f))
                 bad_hit++;

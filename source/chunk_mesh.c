@@ -5,6 +5,7 @@
 #include "block.h"
 #include "chunk_mesh.h"
 #include "light.h"
+#include "water.h"
 
 /* One step out of each face (FACE_* order). */
 static const signed char k_step[FACE_COUNT][3] = {
@@ -177,11 +178,11 @@ bool chunk_face_visible(const Chunk *c, const Chunk *const nb[NB_COUNT],
 }
 
 _Static_assert(BLOCK_AIR == 0, "solid_top() compares layers against zero bytes");
-_Static_assert(BLOCK_MOSSY_COBBLESTONE + 1 == BLOCK_COUNT, "first_air_layer() knows air, the torch and water are the blocks that are not solid: a block added after mossy cobblestone must be checked");
+_Static_assert(BLOCK_COUNT == BLOCK_FALL + 1, "first_air_layer() knows air, the torch and water of every kind are the blocks that are not solid");
 
 /* The first layer, from the bottom, with anything not solid in it (air, a
- * torch or water; WORLD_HEIGHT if none; 0 for a missing chunk, which is all
- * air). */
+ * torch or water of any kind; WORLD_HEIGHT if none; 0 for a missing chunk,
+ * which is all air). */
 static int first_air_layer(const Chunk *c)
 {
     int y;
@@ -191,7 +192,7 @@ static int first_air_layer(const Chunk *c)
     for (y = 0; y < WORLD_HEIGHT; y++)
         if (memchr(c->blocks[y], BLOCK_AIR, sizeof c->blocks[y]) != NULL ||
             memchr(c->blocks[y], BLOCK_TORCH, sizeof c->blocks[y]) != NULL ||
-            memchr(c->blocks[y], BLOCK_WATER, sizeof c->blocks[y]) != NULL)
+            water_row_has(c->blocks[y][0], sizeof c->blocks[y]))
             break;
     return y;
 }
@@ -242,7 +243,7 @@ int chunk_mesh_count(const Chunk *c, const Chunk *const nb[NB_COUNT])
                 const uint8_t *p = &s_pad[y + 1][z + 1][x + 1];
                 int b = c->blocks[y][z][x];
 
-                if (b == BLOCK_AIR || b == BLOCK_WATER) /* water: water_mesh.h */
+                if (b == BLOCK_AIR || block_is_water(b)) /* water: water_mesh.h */
                     continue;
                 if (b == BLOCK_TORCH) {
                     n += MESH_TORCH_FACES;
@@ -272,7 +273,7 @@ int chunk_mesh_build(const Chunk *c, const Chunk *const nb[NB_COUNT], float ox, 
                 const uint8_t *p = &s_pad[y + 1][z + 1][x + 1];
                 int b = c->blocks[y][z][x];
 
-                if (b == BLOCK_AIR || b == BLOCK_WATER) /* water: water_mesh.h */
+                if (b == BLOCK_AIR || block_is_water(b)) /* water: water_mesh.h */
                     continue;
                 if (b == BLOCK_TORCH) {
                     if (n + MESH_TORCH_VERTS > max_verts)
