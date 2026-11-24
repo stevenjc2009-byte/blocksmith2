@@ -9,6 +9,7 @@
 #include "terrain.h"
 #include "test.h"
 #include "world.h"
+#include "worldgen.h"
 
 #define LO (SMALL_MIN * CHUNK_SIZE)                 /* first block, -32 */
 #define HI ((SMALL_MIN + SMALL_CHUNKS) * CHUNK_SIZE) /* one past the last, 32 */
@@ -161,21 +162,19 @@ static void test_generate(uint32_t seed)
             TerrainColumn col = terrain_column(seed, x, z);
             int h = col.height;
 
-            /* The column's own top block, water over it up to the sea, dirt
-             * under grass (sand under sand, stone under stone). */
+            /* The top block, water over it up to the sea, dirt under grass (sand under sand, stone under stone). */
+            wrong += world_get(&s_w, x, 0, z) != BLOCK_STONE;
+            if (world_get(&s_w, x, h + 1, z) != BLOCK_AIR && world_get(&s_w, x, h + 1, z) != BLOCK_WATER) continue; /* tree or plant, row 4-03 */
             wrong += world_get(&s_w, x, h, z) != col.surface;
             wrong += world_get(&s_w, x, h + 1, z) != (h < TERRAIN_SEA ? BLOCK_WATER : BLOCK_AIR);
-            wrong += world_get(&s_w, x, h - 1, z) !=
-                     (col.depth == 0 ? BLOCK_STONE
-                      : col.under == BLOCK_TERRACOTTA ? terrain_band_block(h - 1) : col.under);
-            wrong += world_get(&s_w, x, 0, z) != BLOCK_STONE;
+            wrong += world_get(&s_w, x, h - 1, z) != (col.depth == 0 ? BLOCK_STONE : col.under == BLOCK_TERRACOTTA ? terrain_band_block(h - 1) : col.under);
         }
     CHECK_EQ_INT(wrong, 0);
     for (cz = SMALL_MIN; cz < SMALL_MIN + SMALL_CHUNKS; cz++)
         for (cx = SMALL_MIN; cx < SMALL_MIN + SMALL_CHUNKS; cx++) {
             const Chunk *got = world_chunk(&s_w, cx, cz);
 
-            terrain_fill_chunk(&c, seed, cx, cz);
+            world_gen_chunk(&c, seed, cx, cz); /* terrain, trees, plants */
             chunks_wrong += got == NULL || memcmp(got, &c, sizeof c) != 0;
         }
     CHECK_EQ_INT(chunks_wrong, 0);
@@ -305,6 +304,10 @@ static int ref_build(int cx, int cz, MeshVertex *out)
 
                 if (b == BLOCK_AIR || block_is_water(b)) /* water has its own mesh (water_mesh.h) */
                     continue;
+                if (block_is_plant(b)) { /* row 4-03: the crossed quads */
+                    n += test_ref_plant(out + n, wx, y, wz, b, world_chunk(&s_w, cx, cz)->biome[z][x]);
+                    continue;
+                }
                 for (f = 0; f < FACE_COUNT; f++)
                     if (!ref_solid(wx + k_step[f][0], y + k_step[f][1], wz + k_step[f][2])) {
                         unsigned char ao[4];
@@ -314,6 +317,8 @@ static int ref_build(int cx, int cz, MeshVertex *out)
                         mesh_face_ao(out + n, (float)wx, (float)y, (float)wz, f, block_face_tile(b, f), ao);
                         if (b == BLOCK_GRASS && f == FACE_POS_Y) /* row 4-02: biome tint */
                             test_ref_grass_tint(out + n, world_chunk(&s_w, cx, cz)->biome[z][x]);
+                        else
+                            test_ref_tree_tint(out + n, MESH_FACE_VERTS, b, world_chunk(&s_w, cx, cz)->biome[z][x]);
                         n += MESH_FACE_VERTS;
                     }
             }

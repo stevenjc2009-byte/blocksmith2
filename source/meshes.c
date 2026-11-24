@@ -172,7 +172,8 @@ static bool build_water(const World *w, int cx, int cz)
 }
 
 /* What meshes_water_changed() redoes in each slot's chunk: REDO_WATER its
- * water mesh, REDO_ALL both (a torch went in it or beside it). */
+ * water mesh, REDO_ALL both (a torch went in it or beside it, or a plant
+ * was washed away: row 4-03). */
 enum { REDO_NONE, REDO_WATER, REDO_ALL };
 
 bool meshes_water_changed(const World *w, const WaterFlowChange *ch, int n)
@@ -190,10 +191,10 @@ bool meshes_water_changed(const World *w, const WaterFlowChange *ch, int n)
         m = world_touched_chunks(w, ch[k].x, ch[k].z, touched);
         for (t = 0; t < m; t++) {
             uint8_t *r = &redo[world_slot(touched[t][1])][world_slot(touched[t][0])];
+            int want = ch[k].torch || ch[k].plant ? REDO_ALL : REDO_WATER;
 
-            if (s_meshed[world_slot(touched[t][1])][world_slot(touched[t][0])] &&
-                *r < (ch[k].torch ? REDO_ALL : REDO_WATER))
-                *r = ch[k].torch ? REDO_ALL : REDO_WATER;
+            if (s_meshed[world_slot(touched[t][1])][world_slot(touched[t][0])] && *r < want)
+                *r = (uint8_t)want;
         }
     }
     /* A torch washed away: the chunks round it it lit go stale, as when one

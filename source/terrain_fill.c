@@ -20,6 +20,13 @@ void terrain_fill_biomes(Chunk *c, uint32_t seed, int cx, int cz)
 void terrain_fill_chunk(Chunk *c, uint32_t seed, int cx, int cz)
 {
     TerrainColumn col[CHUNK_SIZE][CHUNK_SIZE];
+
+    terrain_fill_chunk_columns(c, seed, cx, cz, col);
+}
+
+void terrain_fill_chunk_columns(Chunk *c, uint32_t seed, int cx, int cz,
+                                TerrainColumn col[CHUNK_SIZE][CHUNK_SIZE])
+{
     int x, y, z, low = WORLD_HEIGHT;
 
     terrain_chunk_columns(seed, cx, cz, col);

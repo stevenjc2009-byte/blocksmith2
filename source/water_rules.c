@@ -11,11 +11,12 @@
 /* The four sides, in FACE_* order (+x, -x, +z, -z). */
 static const int k_side[4][2] = { { 1, 0 }, { -1, 0 }, { 0, 1 }, { 0, -1 } };
 
-/* Can water run into block b: air, or a torch (washed away)? Water never
- * runs into water; a flowing cell changes only on its own turn. */
+/* Can water run into block b: air, or a torch or a plant (washed away, as
+ * in Minecraft; plants: row 4-03)? Water never runs into water; a flowing
+ * cell changes only on its own turn. */
 static bool takes(int b)
 {
-    return b == BLOCK_AIR || b == BLOCK_TORCH;
+    return b == BLOCK_AIR || b == BLOCK_TORCH || block_is_plant(b);
 }
 
 /* Can water pass block b on its way to a drop (Minecraft's

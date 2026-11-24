@@ -218,10 +218,35 @@ static void test_torch(void)
     CHECK_EQ_INT(place_block(&s_w, &p, &h, BLOCK_DIRT, &x, &y, &z), 0);
 }
 
+/* Row 4-03: a block takes a plant's place, aimed at the plant or at the
+ * cell it stands in; still never inside the player. */
+static void test_plant(void)
+{
+    Player p = player_at(0.5f, 64.0f, 0.5f);
+    RayHit h;
+    int x, y, z;
+
+    flat(63);
+    world_set(&s_w, 4, 64, 4, BLOCK_SHORT_GRASS);
+    check_place(&p, 4, 64, 4, FACE_POS_Y, 1, 4, 64, 4, BLOCK_DIRT); /* aimed at it */
+    CHECK_EQ_INT(world_get(&s_w, 4, 65, 4), BLOCK_AIR);
+    world_set(&s_w, 6, 64, 4, BLOCK_POPPY);
+    check_place(&p, 5, 64, 4, FACE_POS_X, 1, 6, 64, 4, BLOCK_DIRT); /* beside it */
+    world_set(&s_w, 8, 64, 4, BLOCK_FERN);
+    check_place(&p, 8, 63, 4, FACE_POS_Y, 1, 8, 64, 4, BLOCK_DIRT); /* on its ground */
+    world_set(&s_w, 4, 64, 8, BLOCK_DANDELION);
+    h = hit_at(4, 64, 8, FACE_NEG_X); /* a torch too */
+    CHECK_EQ_INT(place_block(&s_w, &p, &h, BLOCK_TORCH, &x, &y, &z), 1);
+    CHECK_EQ_INT(world_get(&s_w, 4, 64, 8), BLOCK_TORCH);
+    world_set(&s_w, 0, 64, 0, BLOCK_SHORT_GRASS); /* where the player stands */
+    check_place(&p, 0, 64, 0, FACE_POS_Y, 0, 0, 64, 0, BLOCK_SHORT_GRASS);
+}
+
 void test_place(void)
 {
     test_spot();
     test_rules();
     test_torch();
+    test_plant();
     test_agrees_with_fits();
 }

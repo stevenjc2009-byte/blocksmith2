@@ -281,7 +281,10 @@ static uint32_t tile_texel(int tile, int x, int y)
     case TILE_LOG_TOP:    return blocktex_log_top_texel(x, y);
     case TILE_COBBLE:     return blocktex_cobble_texel(x, y);
     case TILE_MOSSY_COBBLE: return blocktex_mossy_cobble_texel(x, y);
-    default:              return missing_texel(x, y);
+    default:
+        if (tile >= TILE_BIRCH_LOG_SIDE && tile <= TILE_DEAD_BUSH)
+            return blocktex_tree_texel(tile, x, y);
+        return missing_texel(x, y);
     }
 }
 

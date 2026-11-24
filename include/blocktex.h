@@ -46,11 +46,37 @@ enum {
     TILE_LOG_TOP,     /* row 4-05: oak rings */
     TILE_COBBLE,      /* row 4-05: grey rounded stones */
     TILE_MOSSY_COBBLE, /* row 4-05: the same with green moss */
+    /* Row 4-03 (trees and plants). Each log: side then top, in the order of the
+     * BLOCK_*_LOG ids (birch, spruce, dark oak, jungle, acacia). */
+    TILE_BIRCH_LOG_SIDE,
+    TILE_BIRCH_LOG_TOP,
+    TILE_SPRUCE_LOG_SIDE,
+    TILE_SPRUCE_LOG_TOP,
+    TILE_DARK_OAK_LOG_SIDE,
+    TILE_DARK_OAK_LOG_TOP,
+    TILE_JUNGLE_LOG_SIDE,
+    TILE_JUNGLE_LOG_TOP,
+    TILE_ACACIA_LOG_SIDE,
+    TILE_ACACIA_LOG_TOP,
+    TILE_LEAVES,         /* light grey-green with dark gaps: tinted per biome */
+    TILE_LEAVES_CONIFER, /* the same, needle-like */
+    TILE_CACTUS_SIDE,
+    TILE_CACTUS_TOP,
+    /* The plants, in the order of the BLOCK_SHORT_GRASS.. ids. Texels outside the
+     * plant have alpha 0 (the solid pass cuts alpha under 0x80). */
+    TILE_SHORT_GRASS,
+    TILE_FERN,
+    TILE_DANDELION,
+    TILE_POPPY,
+    TILE_OXEYE_DAISY,
+    TILE_BLUE_ORCHID,
+    TILE_DEAD_BUSH,
     TILE_COUNT
 };
 
 /* How solid the water tile is (0xFF would hide what is behind it). Every
- * other tile is wholly solid. */
+ * other tile is wholly solid, except the plant tiles (TILE_SHORT_GRASS up),
+ * whose texels are 0xFF or 0 (row 4-03). */
 #define BLOCKTEX_WATER_ALPHA 0xB0
 
 /* Where the torch's stick is in its tile, in texels from the tile's top

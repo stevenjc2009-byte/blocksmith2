@@ -77,6 +77,11 @@ void terrain_chunk_columns(uint32_t seed, int cx, int cz,
  * TERRAIN_SEA, then air. */
 void terrain_fill_chunk(Chunk *c, uint32_t seed, int cx, int cz);
 
+/* The same, also giving the chunk's columns (as terrain_chunk_columns()), so
+ * trees.h need not find them again (row 4-03). */
+void terrain_fill_chunk_columns(Chunk *c, uint32_t seed, int cx, int cz,
+                                TerrainColumn col[CHUNK_SIZE][CHUNK_SIZE]);
+
 /* Fill only the biomes of chunk c, which holds chunk (cx, cz) (a chunk made
  * some other way, such as read from a save). terrain_fill_chunk() does this
  * too. */

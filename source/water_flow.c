@@ -185,6 +185,7 @@ static void put(WaterFlow *f, World *w, int x, int y, int z, int b)
         c->y = (int16_t)y;
         c->z = z;
         c->torch = old == BLOCK_TORCH;
+        c->plant = block_is_plant(old);
     }
     world_set(w, x, y, z, b);
 }

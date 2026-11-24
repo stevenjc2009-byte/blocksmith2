@@ -8,6 +8,7 @@
 #include "structure_templates.h"
 #include "terrain.h"
 #include "test.h"
+#include "trees.h"
 #include "village.h"
 #include "worldgen.h"
 
@@ -26,8 +27,8 @@ typedef struct {
 
 static int fdiv(int a, int b) { return structure_floor_div(a, b); }
 
-/* The ground of every chunk touching blocks x0..x1, z0..z1 (structures on
- * top if asked). Free with area_free(). */
+/* The ground of every chunk touching blocks x0..x1, z0..z1 (trees, and structures
+ * on top if asked). Free with area_free(). */
 static void area_make(Area *a, uint32_t seed, int x0, int z0, int x1, int z1, bool structures)
 {
     int cx0 = fdiv(x0, CHUNK_SIZE), cz0 = fdiv(z0, CHUNK_SIZE);
@@ -49,10 +50,10 @@ static void area_make(Area *a, uint32_t seed, int x0, int z0, int x1, int z1, bo
                     memcpy(&a->cells[((size_t)y * d + cz * CHUNK_SIZE + z) * w + cx * CHUNK_SIZE],
                            c.blocks[y][z], CHUNK_SIZE);
         }
-    if (structures) {
-        structure_cache_clear();
+    structure_cache_clear();
+    trees_apply_canvas(&a->cv, seed); /* row 4-03: trees and plants, then structures win */
+    if (structures)
         structure_apply_canvas(&a->cv, seed);
-    }
 }
 
 static void area_free(Area *a) { free(a->cells); }

@@ -180,8 +180,9 @@ void test_blocktex(void)
     CHECK_EQ_INT(memcmp(s_atlas, again, sizeof again), 0); /* same every time */
 
     for (i = 0; i < BLOCKTEX_SIZE * BLOCKTEX_SIZE; i++)
-        if (tile_of(i) != TILE_WATER && (s_atlas[i] & 0xFF) != 0xFF)
-            bad_alpha++; /* only water lets the world show through */
+        if (tile_of(i) != TILE_WATER && !(tile_of(i) >= TILE_SHORT_GRASS && tile_of(i) <= TILE_DEAD_BUSH) &&
+            (s_atlas[i] & 0xFF) != 0xFF)
+            bad_alpha++; /* only water and the plants (row 4-03) let the world show through */
     CHECK_EQ_INT(bad_alpha, 0);
     CHECK_EQ_INT(BLOCKTEX_WATER_ALPHA > 0x60 && BLOCKTEX_WATER_ALPHA < 0xE0, 1);
 
@@ -230,7 +231,7 @@ void test_blocktex(void)
      * colour, snow white-blue, ice light blue, terracotta bands warm. */
     CHECK_EQ_INT(BLOCKTEX_SIZE, 128);
     CHECK_EQ_INT(BLOCKTEX_PER_ROW, 8);
-    CHECK_EQ_INT(TILE_COUNT, 27); /* 22 after row 4-02, 5 more for row 4-05 */
+    CHECK_EQ_INT(TILE_COUNT, 48); /* 27 after row 4-05, 21 more for row 4-03 */
     for (t = TILE_SNOW; t < TILE_COUNT; t++) {
         int x, y, check = 0;
 

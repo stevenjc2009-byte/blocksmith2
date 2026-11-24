@@ -39,13 +39,21 @@ bool place_block(World *w, const Player *p, const RayHit *hit, int b, int *x, in
     int here;
 
     place_spot(hit, x, y, z);
+    /* Row 4-03: aimed at a plant, the block takes the plant's place (as in
+     * Minecraft), not the cell beside it. */
+    if (block_is_plant(world_get(w, hit->x, hit->y, hit->z))) {
+        *x = hit->x;
+        *y = hit->y;
+        *z = hit->z;
+    }
     if (b <= BLOCK_AIR || b >= BLOCK_COUNT || block_is_water(b))
         return false;
     if (*y < 0 || *y >= WORLD_HEIGHT || world_chunk(w, block_to_chunk(*x), block_to_chunk(*z)) == NULL)
         return false;
     here = world_get(w, *x, *y, *z);
-    /* Row 4-01: a block takes water's place; a torch does not go under water. */
-    if (here != BLOCK_AIR && (!block_is_water(here) || b == BLOCK_TORCH))
+    /* Row 4-01: a block takes water's place; a torch does not go under water.
+     * Row 4-03: anything takes a plant's place. */
+    if (here != BLOCK_AIR && !block_is_plant(here) && (!block_is_water(here) || b == BLOCK_TORCH))
         return false;
     /* A torch stands on a solid block and does not get in the way, so it
      * may go where the player is (row 3-03). */

@@ -56,6 +56,7 @@ static uint8_t s_pad[WORLD_HEIGHT + 2][PAD][PAD];
 static uint8_t s_solid[256];                /* block_solid() of every byte */
 static float s_bright[LIGHT_TORCH + 1];     /* light_brightness() of every level */
 static float s_tint[BIOME_COUNT][3];        /* biome_grass_rgb() of every biome */
+static float s_foliage[BIOME_COUNT][3];     /* biome_foliage_rgb() of every biome (row 4-03) */
 static bool s_tables;
 
 /* One step out of each face (FACE_* order) in s_pad, and one step along
@@ -76,6 +77,8 @@ static void fill_pad(const Chunk *c, const Chunk *const nb[NB_COUNT], int ylo, i
             s_bright[i] = light_brightness(i);
         for (i = 0; i < BIOME_COUNT; i++)
             biome_grass_rgb(i, s_tint[i]);
+        for (i = 0; i < BIOME_COUNT; i++)
+            biome_foliage_rgb(i, s_foliage[i]);
         s_tables = true;
     }
     for (j = 0; j < 3; j++)
@@ -169,6 +172,28 @@ static void tint_face(MeshVertex *v, const float rgb[3])
     }
 }
 
+/* Birch and spruce leaves keep one colour wherever they grow (row 4-03). */
+static const float k_birch_rgb[3] = { 0.85f, 0.84f, 0.77f };
+static const float k_spruce_rgb[3] = { 0.65f, 0.76f, 0.88f };
+
+/* The tint of every face of leaf block b, or of a grass-tinted plant, in
+ * biome `biome`; NULL for a block that is not tinted (the grass top is
+ * tinted by its caller). */
+static const float *block_tint(int b, int biome)
+{
+    int i = biome < BIOME_COUNT ? biome : 0;
+
+    if (b == BLOCK_BIRCH_LEAVES)
+        return k_birch_rgb;
+    if (b == BLOCK_SPRUCE_LEAVES)
+        return k_spruce_rgb;
+    if (b >= BLOCK_OAK_LEAVES && b <= BLOCK_ACACIA_LEAVES)
+        return s_foliage[i];
+    if (b == BLOCK_SHORT_GRASS || b == BLOCK_FERN)
+        return s_tint[i];
+    return NULL;
+}
+
 bool chunk_face_visible(const Chunk *c, const Chunk *const nb[NB_COUNT],
                         int x, int y, int z, int face)
 {
@@ -178,11 +203,31 @@ bool chunk_face_visible(const Chunk *c, const Chunk *const nb[NB_COUNT],
 }
 
 _Static_assert(BLOCK_AIR == 0, "solid_top() compares layers against zero bytes");
-_Static_assert(BLOCK_COUNT == BLOCK_FALL + 1, "first_air_layer() knows air, the torch and water of every kind are the blocks that are not solid");
+_Static_assert(BLOCK_DEAD_BUSH + 1 == BLOCK_COUNT, "first_air_layer() knows air, the torch, water of every kind and the plants (the last blocks) are the blocks that are not solid: a block added after the dead bush must be checked");
+_Static_assert(BLOCK_COUNT <= 128, "row_has_plant() reads four ids at a time and needs every id under 128");
+
+/* Does a layer (n bytes, n a multiple of 4) hold a plant (row 4-03: the
+ * last ids, BLOCK_SHORT_GRASS up)? Four bytes at a time: adding 127 -
+ * (BLOCK_SHORT_GRASS - 1) to a byte under 128 sets its top bit exactly when
+ * the byte is at least BLOCK_SHORT_GRASS, and never carries into the next. */
+static bool row_has_plant(const uint8_t *row, int n)
+{
+    const uint32_t ones = 0x01010101u;
+    int i;
+
+    for (i = 0; i < n; i += 4) {
+        uint32_t x;
+
+        memcpy(&x, row + i, sizeof x);
+        if (((x + ones * (128u - BLOCK_SHORT_GRASS)) | x) & (ones * 128u))
+            return true;
+    }
+    return false;
+}
 
 /* The first layer, from the bottom, with anything not solid in it (air, a
- * torch or water of any kind; WORLD_HEIGHT if none; 0 for a missing chunk,
- * which is all air). */
+ * torch, water of any kind or a plant; WORLD_HEIGHT if none; 0 for a
+ * missing chunk, which is all air). */
 static int first_air_layer(const Chunk *c)
 {
     int y;
@@ -192,7 +237,8 @@ static int first_air_layer(const Chunk *c)
     for (y = 0; y < WORLD_HEIGHT; y++)
         if (memchr(c->blocks[y], BLOCK_AIR, sizeof c->blocks[y]) != NULL ||
             memchr(c->blocks[y], BLOCK_TORCH, sizeof c->blocks[y]) != NULL ||
-            water_row_has(c->blocks[y][0], sizeof c->blocks[y]))
+            water_row_has(c->blocks[y][0], sizeof c->blocks[y]) ||
+            row_has_plant(c->blocks[y][0], sizeof c->blocks[y]))
             break;
     return y;
 }
@@ -249,6 +295,10 @@ int chunk_mesh_count(const Chunk *c, const Chunk *const nb[NB_COUNT])
                     n += MESH_TORCH_FACES;
                     continue;
                 }
+                if (block_is_plant(b)) {
+                    n += MESH_PLANT_FACES;
+                    continue;
+                }
                 for (f = 0; f < FACE_COUNT; f++)
                     n += !p[k_pad_step[f]];
             }
@@ -281,6 +331,19 @@ int chunk_mesh_build(const Chunk *c, const Chunk *const nb[NB_COUNT], float ox, 
                     n += mesh_torch(out + n, ox + (float)x, (float)y, oz + (float)z);
                     continue;
                 }
+                if (block_is_plant(b)) { /* crossed quads (row 4-03) */
+                    const float *tint = block_tint(b, c->biome[z][x]);
+
+                    if (n + MESH_PLANT_VERTS > max_verts)
+                        return -1;
+                    mesh_plant(out + n, ox + (float)x, (float)y, oz + (float)z, block_face_tile(b, 0),
+                               lit ? s_bright[light_level(x, y, z)] : 0.0f);
+                    if (tint != NULL)
+                        for (f = 0; f < MESH_PLANT_FACES; f++)
+                            tint_face(out + n + f * MESH_FACE_VERTS, tint);
+                    n += MESH_PLANT_VERTS;
+                    continue;
+                }
                 for (f = 0; f < FACE_COUNT; f++) {
                     const uint8_t *o = p + k_pad_step[f];
                     unsigned char ao[4];
@@ -295,6 +358,8 @@ int chunk_mesh_build(const Chunk *c, const Chunk *const nb[NB_COUNT], float ox, 
                                   block_face_tile(b, f), ao, t);
                     if (b == BLOCK_GRASS && f == FACE_POS_Y) /* the biome's tint (row 4-02) */
                         tint_face(out + n, s_tint[c->biome[z][x] < BIOME_COUNT ? c->biome[z][x] : 0]);
+                    else if (b >= BLOCK_OAK_LEAVES && b <= BLOCK_ACACIA_LEAVES) /* leaves: every face (row 4-03) */
+                        tint_face(out + n, block_tint(b, c->biome[z][x]));
                     n += MESH_FACE_VERTS;
                 }
             }

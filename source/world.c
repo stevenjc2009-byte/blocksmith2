@@ -147,7 +147,8 @@ bool world_break(World *w, int x, int y, int z)
     if (y <= 0 || b == BLOCK_AIR || block_is_water(b))
         return false;
     world_set(w, x, y, z, BLOCK_AIR);
-    if (world_get(w, x, y + 1, z) == BLOCK_TORCH)
+    b = world_get(w, x, y + 1, z);
+    if (b == BLOCK_TORCH || block_is_plant(b)) /* what stood on it (plants: row 4-03) */
         world_set(w, x, y + 1, z, BLOCK_AIR);
     return true;
 }

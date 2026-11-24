@@ -110,6 +110,14 @@ void test_biome(void);
 void test_biome_tables(void); /* test_biome_tables.c, called by test_biome() */
 /* A biome's grass tint on a reference grass top face (6 vertices). */
 void test_ref_grass_tint(MeshVertex *face, int biome);
+/* Row 4-03 (test_trees_ref.c): a reference tint for `count` vertices of a
+ * leaf or grass-like plant block; other blocks are left alone. */
+int test_ref_tree_tinted(int block);
+void test_ref_tree_tint(MeshVertex *face, int count, int block, int biome);
+int test_ref_plant(MeshVertex *out, int x, int y, int z, int block, int biome);
+void test_trees(void);       /* test_trees.c: where trees and plants are */
+void test_trees_place(void); /* test_trees_place.c: seamless, structures, ground */
+void test_trees_mesh(void);  /* test_trees_mesh.c: solidity, raycast, meshes */
 void test_structure(void);
 void test_structure_world(void);
 void test_structure_biome(void);

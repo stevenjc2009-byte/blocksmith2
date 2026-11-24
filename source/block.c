@@ -55,6 +55,33 @@ int block_face_tile(int block, int face)
         return TILE_COBBLE;
     case BLOCK_MOSSY_COBBLESTONE:
         return TILE_MOSSY_COBBLE;
+    case BLOCK_BIRCH_LOG:
+    case BLOCK_SPRUCE_LOG:
+    case BLOCK_DARK_OAK_LOG:
+    case BLOCK_JUNGLE_LOG:
+    case BLOCK_ACACIA_LOG: {
+        int i = block - BLOCK_BIRCH_LOG;
+
+        return TILE_BIRCH_LOG_SIDE + 2 * i + (face == FACE_POS_Y || face == FACE_NEG_Y);
+    }
+    case BLOCK_OAK_LEAVES:
+    case BLOCK_BIRCH_LEAVES:
+    case BLOCK_DARK_OAK_LEAVES:
+    case BLOCK_JUNGLE_LEAVES:
+    case BLOCK_ACACIA_LEAVES:
+        return TILE_LEAVES;
+    case BLOCK_SPRUCE_LEAVES:
+        return TILE_LEAVES_CONIFER;
+    case BLOCK_CACTUS:
+        return face == FACE_POS_Y || face == FACE_NEG_Y ? TILE_CACTUS_TOP : TILE_CACTUS_SIDE;
+    case BLOCK_SHORT_GRASS:
+    case BLOCK_FERN:
+    case BLOCK_DANDELION:
+    case BLOCK_POPPY:
+    case BLOCK_OXEYE_DAISY:
+    case BLOCK_BLUE_ORCHID:
+    case BLOCK_DEAD_BUSH:
+        return TILE_SHORT_GRASS + (block - BLOCK_SHORT_GRASS);
     default:
         if (block_is_water(block)) /* every kind: its own mesh (water_mesh.h) */
             return TILE_WATER;
@@ -65,7 +92,8 @@ int block_face_tile(int block, int face)
 bool block_solid(int block)
 {
     return block == BLOCK_GRASS || block == BLOCK_DIRT || block == BLOCK_STONE ||
-           block == BLOCK_SAND || (block >= BLOCK_SNOWY_GRASS && block <= BLOCK_MOSSY_COBBLESTONE);
+           block == BLOCK_SAND || (block >= BLOCK_SNOWY_GRASS && block <= BLOCK_MOSSY_COBBLESTONE) ||
+           (block >= BLOCK_BIRCH_LOG && block <= BLOCK_CACTUS); /* row 4-03: logs, leaves, cactus */
 }
 
 bool block_is_water(int block)

@@ -200,7 +200,7 @@ static void test_random(void)
     CHECK_EQ_INT(bad_miss, 0);
     /* Both kinds happened plenty, so neither check passed by being empty. */
     CHECK_EQ_INT(hits > 500, 1);
-    CHECK_EQ_INT(misses > 300, 1);
+    CHECK_EQ_INT(misses > 100, 1); /* trees and plants (row 4-03) catch rays: 206 of 3000 miss, was over 300 */
     CHECK_EQ_INT(flats > 1000, 1);
 }
 

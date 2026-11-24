@@ -136,7 +136,7 @@ static void random_fill(Chunk *c, int ylo, int yhi, int pct)
         for (z = 0; z < CHUNK_SIZE; z++)
             for (x = 0; x < CHUNK_SIZE; x++)
                 if (rnd(100) < pct)
-                    chunk_set(c, x, y, z, 1 + rnd(BLOCK_COUNT - 1));
+                    chunk_set(c, x, y, z, 1 + rnd(BLOCK_SHORT_GRASS - 1));
 }
 
 /* The reference mesh: every block of s_c, every face, through ref_solid(),
@@ -179,6 +179,9 @@ static int ref_mesh(const Chunk *const nb[NB_COUNT], float ox, float oz, MeshVer
                                           oz + (float)z, f, block_face_tile(b, f), ao, t);
                             if (b == BLOCK_GRASS && f == FACE_POS_Y) /* row 4-02: biome tint */
                                 test_ref_grass_tint(out + faces * MESH_FACE_VERTS, s_c.biome[z][x]);
+                            else
+                                test_ref_tree_tint(out + faces * MESH_FACE_VERTS, MESH_FACE_VERTS, b,
+                                                   s_c.biome[z][x]); /* row 4-03: leaves */
                         }
                         faces++;
                     }

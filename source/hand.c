@@ -60,8 +60,8 @@ bool hand_break(World *w, const Camera *cam)
         return true;
     t = light_brightness(light_world_level(w, hit.x, hit.y, hit.z));
     particles_burst(&s_bits, hit.x, hit.y, hit.z, b, b == BLOCK_TORCH ? 1.0f : t);
-    if (above == BLOCK_TORCH && world_get(w, hit.x, hit.y + 1, hit.z) != BLOCK_TORCH)
-        particles_burst(&s_bits, hit.x, hit.y + 1, hit.z, BLOCK_TORCH, 1.0f);
+    if ((above == BLOCK_TORCH || block_is_plant(above)) && world_get(w, hit.x, hit.y + 1, hit.z) != above)
+        particles_burst(&s_bits, hit.x, hit.y + 1, hit.z, above, above == BLOCK_TORCH ? 1.0f : t);
     s_lit_age = HAND_LIGHT_REFRESH;
     return meshes_rebuild_around(w, hit.x, hit.y, hit.z);
 }

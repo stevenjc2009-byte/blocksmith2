@@ -59,7 +59,8 @@ CORE_SOURCES	:=	source/world_coords.c source/framebuffer.c source/mat4.c \
 			source/particles.c source/held.c source/weather.c source/save_job.c 			source/water.c source/water_mesh.c \
 			source/structure_templates.c source/structure.c source/village.c source/village_site.c \
 			source/village_apply.c source/village_cache.c source/village_ctx.c source/ruins.c source/worldgen.c \
-			source/water_flow.c source/water_rules.c
+			source/water_flow.c source/water_rules.c \
+			source/trees.c source/trees_shape.c source/trees_plants.c source/blocktex_trees.c
 TEST_SOURCES	:=	$(wildcard tests/*.c)
 
 #---------------------------------------------------------------------------------

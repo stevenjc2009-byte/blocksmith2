@@ -61,6 +61,9 @@ int main(void)
     test_flow_world();
     test_flow_mesh();
     test_flow_swim();
+    test_trees();
+    test_trees_place();
+    test_trees_mesh();
 
     printf("PC tests: %d checks, %d failed\n", g_checks, g_fails);
     if (g_checks == 0) {

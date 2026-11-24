@@ -156,10 +156,11 @@ static void random_fill(Chunk *c, int ylo, int yhi, int water, int other)
                 if (r < water) {
                     chunk_set(c, x, y, z, BLOCK_WATER);
                 } else if (r < water + other) {
-                    int b = 1 + rnd(BLOCK_COUNT - 1);
+                    int b = 1 + rnd(BLOCK_SHORT_GRASS - 1);
 
                     /* Still water only: this reference is row 4-01's
-                     * (flowing water: test_flow_mesh.c). */
+                     * (flowing water: test_flow_mesh.c); no plants (row 4-03:
+                     * test_trees_mesh.c). */
                     chunk_set(c, x, y, z, block_is_water(b) ? BLOCK_WATER : b);
                 }
             }

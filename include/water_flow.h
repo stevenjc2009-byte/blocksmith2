@@ -33,14 +33,14 @@
  *    (water_amount()), or air if that is none. If that is not what it is,
  *    it becomes that (air ends the turn).
  * 2. Then it spreads (water_rules_spread()): down first, as falling water,
- *    into air or a torch under it. If it cannot go down, a source (always)
+ *    into air, a torch or a plant under it. If it cannot go down, a source (always)
  *    or water over something not water spreads sideways: its amount less
  *    one (7 from falling water, nothing from level 7) into the sides that
- *    are air or a torch, but only those on the way to the nearest drop: a
+ *    are air, a torch or a plant, but only those on the way to the nearest drop: a
  *    cell it could run into with air, a torch or water under it, found up
  *    to WATER_FLOW_SLOPE cells on through cells that are not solid and not
- *    sources. With no drop that near it spreads all four ways. A torch in
- *    the way is washed away.
+ *    sources. With no drop that near it spreads all four ways. A torch or
+ *    a plant (row 4-03) in the way is washed away.
  * Water spread into a cell gets what that cell works out in step 1, so
  * water between two sources over a floor becomes a source at once.
  *
@@ -75,11 +75,12 @@ typedef struct {
 } WaterFlowCell;
 
 /* A cell the water changed: torch says a torch was washed away there (its
- * light changes as when one is broken). */
+ * light changes as when one is broken), plant a plant (row 4-03; it was
+ * in the chunk's solid mesh, so that is built again too). */
 typedef struct {
     int32_t x, z;
     int16_t y;
-    bool torch;
+    bool torch, plant;
 } WaterFlowChange;
 
 typedef struct {

@@ -81,8 +81,17 @@ void mesh_face_lit(MeshVertex out[MESH_FACE_VERTS], float x, float y, float z,
  * torch glows. Returns MESH_TORCH_VERTS. */
 int mesh_torch(MeshVertex out[MESH_TORCH_VERTS], float x, float y, float z);
 
+/* A plant (row 4-03, block_is_plant()) is two crossed quads along the cell's
+ * diagonals, each drawn from both sides (the GPU culls back faces): 4 faces,
+ * MESH_PLANT_VERTS vertices, showing the whole of tile `tile`. Every corner
+ * has brightness MESH_PLANT_SHADE and torch light t. Returns MESH_PLANT_VERTS. */
+#define MESH_PLANT_FACES 4
+#define MESH_PLANT_VERTS (MESH_PLANT_FACES * MESH_FACE_VERTS)
+#define MESH_PLANT_SHADE 0.9f
+int mesh_plant(MeshVertex out[MESH_PLANT_VERTS], float x, float y, float z, int tile, float t);
+
 /* Write all six faces of a block (MESH_BLOCK_VERTS vertices), or a torch's
- * shape (mesh_torch()) for a torch. A grass top gets the plains tint
+ * shape (mesh_torch()) for a torch and the crossed quads (mesh_plant()) for a plant. A grass top gets the plains tint
  * (biome.h), as in a plains chunk. Returns the number of vertices written:
  * 0 for air or a bad block. */
 int mesh_block(MeshVertex *out, float x, float y, float z, int block);

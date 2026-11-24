@@ -44,6 +44,30 @@ enum {
     BLOCK_FLOW_6,
     BLOCK_FLOW_7,
     BLOCK_FALL,
+    /* Row 4-03 (trees and plants): logs (bark sides, rings top and bottom), then
+     * leaves (solid opaque cubes, gaps drawn dark, every face tinted by the biome's
+     * foliage colour; birch and spruce a fixed one), then the cactus. All solid. */
+    BLOCK_BIRCH_LOG,
+    BLOCK_SPRUCE_LOG,
+    BLOCK_DARK_OAK_LOG,
+    BLOCK_JUNGLE_LOG,
+    BLOCK_ACACIA_LOG,
+    BLOCK_OAK_LEAVES,
+    BLOCK_BIRCH_LEAVES,
+    BLOCK_SPRUCE_LEAVES,
+    BLOCK_DARK_OAK_LEAVES,
+    BLOCK_JUNGLE_LEAVES,
+    BLOCK_ACACIA_LEAVES,
+    BLOCK_CACTUS,
+    /* Plants: two crossed quads with a cut-out texture, not solid (block_is_plant()).
+     * They must stay the LAST ids: block_solid() and the mesh count on that. */
+    BLOCK_SHORT_GRASS, /* tinted like grass */
+    BLOCK_FERN,        /* tinted like grass */
+    BLOCK_DANDELION,
+    BLOCK_POPPY,
+    BLOCK_OXEYE_DAISY,
+    BLOCK_BLUE_ORCHID,
+    BLOCK_DEAD_BUSH,
     BLOCK_COUNT
 };
 
@@ -62,9 +86,16 @@ enum {
  * value out of range. */
 int block_face_tile(int block, int face);
 
+/* A plant (row 4-03): short grass up to the dead bush. Not solid, drawn as
+ * crossed quads, gone when the block under it goes. */
+static inline bool block_is_plant(int block)
+{
+    return block >= BLOCK_SHORT_GRASS && block < BLOCK_COUNT;
+}
+
 /* Is the block a solid cube: something the player cannot walk through, that
  * hides the faces of the blocks beside it and stops light? Every block is
- * except air, a torch and water (and anything not a block). */
+ * except air, a torch, water and the plants (and anything not a block). */
 bool block_solid(int block);
 
 /* Is the block water of any kind: still (BLOCK_WATER), flowing or falling

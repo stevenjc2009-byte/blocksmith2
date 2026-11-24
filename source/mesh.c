@@ -116,6 +116,34 @@ int mesh_torch(MeshVertex out[MESH_TORCH_VERTS], float x, float y, float z)
     return MESH_TORCH_VERTS;
 }
 
+int mesh_plant(MeshVertex out[MESH_PLANT_VERTS], float x, float y, float z, int tile, float t)
+{
+    /* The bottom-left and bottom-right corner (offsets in x, z) of each of the
+     * four quads, as seen from the front; the back sides run the other way. */
+    static const signed char k_quad[MESH_PLANT_FACES][4] = {
+        { 0, 0, 1, 1 }, { 1, 1, 0, 0 }, { 0, 1, 1, 0 }, { 1, 0, 0, 1 },
+    };
+    float uv[4];
+    int q, i;
+
+    blocktex_tile_uv(tile, uv);
+    for (q = 0; q < MESH_PLANT_FACES; q++)
+        for (i = 0; i < MESH_FACE_VERTS; i++) {
+            int c = k_order[0][i]; /* 0 bl, 1 br, 2 tr, 3 tl */
+            int right = c == 1 || c == 2;
+            MeshVertex *v = &out[q * MESH_FACE_VERTS + i];
+
+            v->x = x + (float)k_quad[q][right ? 2 : 0];
+            v->y = y + (c >= 2 ? 1.0f : 0.0f);
+            v->z = z + (float)k_quad[q][right ? 3 : 1];
+            v->u = right ? uv[2] : uv[0];
+            v->v = (c >= 2) ? uv[3] : uv[1];
+            v->r = v->g = v->b = MESH_PLANT_SHADE;
+            v->t = t;
+        }
+    return MESH_PLANT_VERTS;
+}
+
 void mesh_face(MeshVertex out[MESH_FACE_VERTS], float x, float y, float z,
                int face, int tile)
 {
@@ -130,6 +158,8 @@ int mesh_block(MeshVertex *out, float x, float y, float z, int block)
         return 0;
     if (block == BLOCK_TORCH)
         return mesh_torch(out, x, y, z);
+    if (block_is_plant(block))
+        return mesh_plant(out, x, y, z, block_face_tile(block, 0), 0.0f);
     for (face = 0; face < FACE_COUNT; face++)
         mesh_face(out + face * MESH_FACE_VERTS, x, y, z, face,
                   block_face_tile(block, face));

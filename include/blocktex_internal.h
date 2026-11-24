@@ -44,4 +44,7 @@ uint32_t blocktex_log_top_texel(int x, int y);
 uint32_t blocktex_cobble_texel(int x, int y);
 uint32_t blocktex_mossy_cobble_texel(int x, int y);
 
+/* The row 4-03 tiles, in source/blocktex_trees.c. */
+uint32_t blocktex_tree_texel(int tile, int x, int y); /* TILE_BIRCH_LOG_SIDE .. TILE_DEAD_BUSH */
+
 #endif

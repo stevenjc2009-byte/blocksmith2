@@ -18,6 +18,7 @@ static World s_w;
 static WaterFlow s_f;
 static int s_washed;         /* torches washed away, read from s_f.changed */
 static int s_wx, s_wy, s_wz; /* where the last one was */
+static int s_plants;         /* plants washed away (row 4-03) */
 
 static void put(int x, int y, int z, int b)
 {
@@ -42,6 +43,7 @@ static void scene(void)
                 put(x, y, z, BLOCK_STONE);
     water_flow_init(&s_f);
     s_washed = 0;
+    s_plants = 0;
 }
 
 /* Hand the world to the queue and wake (x, y, z): the water starts. */
@@ -55,13 +57,15 @@ static void note_washed(void)
 {
     int i;
 
-    for (i = 0; i < s_f.changed_n; i++)
+    for (i = 0; i < s_f.changed_n; i++) {
+        s_plants += s_f.changed[i].plant;
         if (s_f.changed[i].torch) {
             s_washed++;
             s_wx = s_f.changed[i].x;
             s_wy = s_f.changed[i].y;
             s_wz = s_f.changed[i].z;
         }
+    }
 }
 
 /* One whole step: every cell whose turn has come has it. */
@@ -339,6 +343,29 @@ static void test_torch(void)
     CHECK_EQ_INT(s_washed, 1);
 }
 
+/* Row 4-03: water washes a plant away like a torch, but no light changes. */
+static void test_plant(void)
+{
+    unsigned edits;
+
+    scene();
+    channel();
+    put(3, AT, 0, BLOCK_POPPY);
+    put(5, AT, 0, BLOCK_SHORT_GRASS);
+    put(0, AT, 0, BLOCK_WATER);
+    edits = s_w.torch_edits;
+    start(0, AT, 0);
+    steps(2);
+    CHECK_EQ_INT(at(3, AT, 0), BLOCK_POPPY);
+    CHECK_EQ_INT(s_plants, 0);
+    steps(3);
+    CHECK_EQ_INT(at(3, AT, 0), BLOCK_FLOW_3);
+    CHECK_EQ_INT(at(5, AT, 0), BLOCK_FLOW_5);
+    CHECK_EQ_INT(s_plants, 2);
+    CHECK_EQ_INT(s_washed, 0);
+    CHECK_EQ_INT((int)(s_w.torch_edits - edits), 0);
+}
+
 void test_flow(void)
 {
     test_water_helpers();
@@ -348,4 +375,5 @@ void test_flow(void)
     test_new_source();
     test_decay();
     test_torch();
+    test_plant();
 }

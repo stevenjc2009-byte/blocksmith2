@@ -1,6 +1,9 @@
 #include <string.h>
 
+#include "alpha_test.h"
 #include "gpu_state.h"
+
+_Static_assert(ALPHA_TEST_FUNC_GEQUAL == GPU_GEQUAL, "alpha_test.h names the function by its number");
 
 void gpu_state_framebuffer(void *color, void *depth)
 {
@@ -66,7 +69,7 @@ void gpu_state_fragment_ops(void)
     GPUCMD_AddWrite(GPUREG_DEPTHMAP_ENABLE, 1);
     GPUCMD_AddWrite(GPUREG_DEPTHMAP_SCALE, f32tof24(-1.0f));
     GPUCMD_AddWrite(GPUREG_DEPTHMAP_OFFSET, f32tof24(0.0f));
-    t[0] = GPU_ALWAYS << 4; /* alpha test off */
+    t[0] = ALPHA_TEST_WORD; /* alpha test on: pass alpha >= ALPHA_TEST_REF (plants, row 4-03) */
     t[1] = GPU_ALWAYS << 4; /* stencil test off */
     t[2] = 0;               /* stencil ops: keep */
     t[3] = depth_word(true);
